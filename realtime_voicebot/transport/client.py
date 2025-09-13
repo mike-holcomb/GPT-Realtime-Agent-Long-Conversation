@@ -4,10 +4,13 @@ import asyncio
 import base64
 import json
 import logging
-from contextlib import suppress
 
 import websockets
 
+from ..metrics import (
+    audio_frames_dropped_total,
+    eos_to_first_delta_ms,
+)
 from .events import EventHandler
 
 
@@ -38,12 +41,24 @@ class RealtimeClient:
             await asyncio.gather(recv_task, send_task, return_exceptions=True)
 
     async def _recv_loop(self, ws: websockets.WebSocketClientProtocol) -> None:
+        log = logging.getLogger(__name__)
         async for raw in ws:
             try:
                 event = json.loads(raw)
             except json.JSONDecodeError:
-                logging.getLogger(__name__).debug("invalid_json", extra={"raw": raw})
+                log.debug("invalid_json", extra={"event_type": "invalid_json", "raw": raw})
                 continue
+            log.info(
+                event.get("type", "unknown"),
+                extra={
+                    "event_type": event.get("type"),
+                    "turn_id": event.get("turn_id"),
+                    "response_id": event.get("response_id"),
+                    "latency_ms": eos_to_first_delta_ms.last_ms,
+                    "tokens_total": event.get("usage", {}).get("total_tokens"),
+                    "dropped_frames": audio_frames_dropped_total.value,
+                },
+            )
             await self.on_event(event)
 
     async def _send_audio(self, ws: websockets.WebSocketClientProtocol) -> None:
@@ -62,9 +77,10 @@ class RealtimeClient:
 
     async def append_audio(self, chunk: bytes) -> None:
         """Queue audio to be sent to the server."""
-        with suppress(asyncio.QueueFull):
+        try:
             self._audio_q.put_nowait(chunk)
-        # TODO: surface backpressure metrics when drops occur
+        except asyncio.QueueFull:
+            audio_frames_dropped_total.inc()
 
     async def send_json(self, payload: dict) -> None:
         if not self._ws:

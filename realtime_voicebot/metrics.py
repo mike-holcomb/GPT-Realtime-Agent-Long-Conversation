@@ -15,13 +15,24 @@ class Counter:
 class Timer:
     def __init__(self) -> None:
         self.last_ms: float | None = None
+        self._start: float | None = None
+
+    def start(self) -> None:
+        self._start = time.perf_counter()
+
+    def stop(self) -> float | None:
+        if self._start is None:
+            return None
+        end = time.perf_counter()
+        self.last_ms = (end - self._start) * 1000
+        self._start = None
+        return self.last_ms
 
     @contextmanager
     def time(self):  # noqa: ANN201 (to keep it lightweight)
-        start = time.perf_counter()
+        self.start()
         yield
-        end = time.perf_counter()
-        self.last_ms = (end - start) * 1000
+        self.stop()
 
 
 # Example metrics placeholders
@@ -29,3 +40,4 @@ turns_total = Counter()
 reconnections_total = Counter()
 audio_frames_dropped_total = Counter()
 eos_to_first_delta_ms = Timer()
+first_delta_to_playback_ms = Timer()

@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from dataclasses import dataclass
 
 import sounddevice as sd
+
+from ..metrics import (
+    audio_frames_dropped_total,
+    first_delta_to_playback_ms,
+)
 
 
 @dataclass
@@ -28,6 +34,7 @@ class AudioPlayer:
         self._task: asyncio.Task | None = None
         self.stream: sd.RawOutputStream | None = None
         self._start_lock = asyncio.Lock()
+        self.log = logging.getLogger(__name__)
 
     async def start(self) -> None:
         self.stream = sd.RawOutputStream(
@@ -38,6 +45,17 @@ class AudioPlayer:
         )
         self.stream.start()
         self._task = asyncio.create_task(self._run())
+        self.log.info(
+            "audio_output_start",
+            extra={
+                "event_type": "audio_output_start",
+                "turn_id": None,
+                "response_id": None,
+                "latency_ms": first_delta_to_playback_ms.last_ms,
+                "tokens_total": None,
+                "dropped_frames": audio_frames_dropped_total.value,
+            },
+        )
 
     def _is_running(self) -> bool:
         return self.stream is not None and self._task is not None and not self._task.done()
@@ -57,6 +75,18 @@ class AudioPlayer:
                 return
             buffer.extend(chunk)
         await loop.run_in_executor(None, self.stream.write, bytes(buffer))
+        first_delta_to_playback_ms.stop()
+        self.log.info(
+            "playback_start",
+            extra={
+                "event_type": "playback_start",
+                "turn_id": None,
+                "response_id": None,
+                "latency_ms": first_delta_to_playback_ms.last_ms,
+                "tokens_total": None,
+                "dropped_frames": audio_frames_dropped_total.value,
+            },
+        )
 
         while True:
             chunk = await self._queue.get()
@@ -68,13 +98,24 @@ class AudioPlayer:
         self.stream.close()
         self.stream = None
 
-    async def stop(self) -> None:
+    async def stop(self, barge_in: bool = False) -> None:
         # Only signal the background task if it's running.
         if self._task is not None:
             await self._queue.put(None)
             await self._task
             self._task = None
-            self._task = None
+        event = "barge_in" if barge_in else "audio_output_stop"
+        self.log.info(
+            event,
+            extra={
+                "event_type": event,
+                "turn_id": None,
+                "response_id": None,
+                "latency_ms": None,
+                "tokens_total": None,
+                "dropped_frames": audio_frames_dropped_total.value,
+            },
+        )
 
     async def flush(self) -> None:
         """Drop pending audio and stop playback immediately."""
@@ -90,5 +131,7 @@ class AudioPlayer:
             async with self._start_lock:
                 if not self._is_running():
                     await self.start()
-        with contextlib.suppress(asyncio.QueueFull):
+        try:
             self._queue.put_nowait(chunk)
+        except asyncio.QueueFull:
+            audio_frames_dropped_total.inc()
