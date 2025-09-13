@@ -38,3 +38,16 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 docstring-code-format = true
+
+# Packaging: restrict discovery to our package and avoid including 'original' scripts.
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["realtime_voicebot*"]
+exclude = ["original*", "tests*", "examples*"]
