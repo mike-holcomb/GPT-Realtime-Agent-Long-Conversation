@@ -99,7 +99,11 @@ class AudioPlayer:
         self.stream = None
 
     async def stop(self, barge_in: bool = False) -> None:
-        # Only signal the background task if it's running.
+        """Stop playback immediately and flush any buffered audio."""
+        # Drain any queued audio so it's not played after cancellation/barge-in.
+        while not self._queue.empty():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                self._queue.get_nowait()
         if self._task is not None:
             await self._queue.put(None)
             await self._task
