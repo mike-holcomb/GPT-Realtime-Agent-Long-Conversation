@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
-from typing import Awaitable, Callable
-
+from collections.abc import Awaitable, Callable
 
 EventHandler = Callable[[dict], Awaitable[None]]
 
@@ -35,14 +35,10 @@ class RealtimeClient:
 
     async def append_audio(self, chunk: bytes) -> None:
         """Queue audio to be sent to the server."""
-        try:
+        with contextlib.suppress(asyncio.QueueFull):
             self._audio_q.put_nowait(chunk)
-        except asyncio.QueueFull:
-            # Metrics handled by app/metrics in a later iteration
-            pass
 
     async def send_json(self, payload: dict) -> None:
         # Placeholder for a generic send method
         _ = json.dumps(payload)
         await asyncio.sleep(0)
-

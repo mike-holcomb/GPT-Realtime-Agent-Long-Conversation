@@ -16,4 +16,3 @@ class MemoryStore:
 
     def get(self, key: str) -> str | None:
         return self.facts.get(key)
-

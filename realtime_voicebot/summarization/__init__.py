@@ -1,2 +1,1 @@
 """Summarization interfaces and implementations."""
-

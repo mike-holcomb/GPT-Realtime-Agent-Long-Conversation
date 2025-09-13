@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass
+
+import sounddevice as sd
 
 
 @dataclass
@@ -12,34 +15,60 @@ class PlayerConfig:
 
 
 class AudioPlayer:
-    """Stub streaming audio player.
+    """Stream PCM16 audio using ``sounddevice``.
 
-    Real implementation will use sounddevice.RawOutputStream and start
-    playback on the first delta. This stub exposes the same interface.
+    Audio chunks are queued via :meth:`feed` and played back on a background
+    task. A small jitter buffer is filled before playback starts to minimize
+    underruns.
     """
 
     def __init__(self, cfg: PlayerConfig):
         self.cfg = cfg
-        self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=128)
+        self._queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=128)
         self._task: asyncio.Task | None = None
+        self.stream: sd.RawOutputStream | None = None
 
     async def start(self) -> None:
-        async def _run():
-            while True:
-                chunk = await self._queue.get()
-                if chunk is None:  # type: ignore[comparison-overlap]
-                    break
-        self._task = asyncio.create_task(_run())
+        self.stream = sd.RawOutputStream(
+            samplerate=self.cfg.sample_rate_hz,
+            dtype="int16",
+            channels=1,
+            device=self.cfg.device_id,
+        )
+        self.stream.start()
+        self._task = asyncio.create_task(self._run())
+
+    async def _run(self) -> None:
+        assert self.stream is not None
+        loop = asyncio.get_running_loop()
+
+        # 2 bytes/sample for int16, mono channel
+        jitter_bytes = int(self.cfg.sample_rate_hz * self.cfg.jitter_ms / 1_000) * 2
+        buffer = bytearray()
+        while len(buffer) < jitter_bytes:
+            chunk = await self._queue.get()
+            if chunk is None:
+                self.stream.stop()
+                self.stream.close()
+                return
+            buffer.extend(chunk)
+        await loop.run_in_executor(None, self.stream.write, bytes(buffer))
+
+        while True:
+            chunk = await self._queue.get()
+            if chunk is None:
+                break
+            await loop.run_in_executor(None, self.stream.write, chunk)
+
+        self.stream.stop()
+        self.stream.close()
+        self.stream = None
 
     async def stop(self) -> None:
-        await self._queue.put(None)  # type: ignore[arg-type]
+        await self._queue.put(None)
         if self._task:
             await self._task
 
     async def feed(self, chunk: bytes) -> None:
-        try:
+        with contextlib.suppress(asyncio.QueueFull):
             self._queue.put_nowait(chunk)
-        except asyncio.QueueFull:
-            # In a later iteration, count drops via metrics
-            pass
-

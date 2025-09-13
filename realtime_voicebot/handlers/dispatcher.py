@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable
-
+from collections.abc import Awaitable, Callable
 
 Handler = Callable[[dict], Awaitable[None]]
 
@@ -18,4 +17,3 @@ class Dispatcher:
         handler = self._handlers.get(etype)
         if handler:
             await handler(event)
-
