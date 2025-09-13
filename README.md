@@ -306,13 +306,28 @@ class OpenAISummarizer:
 
 ## Rollout checklist
 
-* [ ] Extract layers (transport, audio, state, summarization, handlers).
+* [x] Extract layers (transport, audio, state, summarization, handlers).
 * [ ] Streaming playback + barge‑in + `response.cancel`. ([OpenAI Platform][2])
 * [ ] Replace hard‑coded French with language‑aware summarization policy.
 * [ ] Add structured logging, basic metrics, and latency probes.
 * [ ] Pydantic settings + Typer CLI.
 * [ ] Tests (fake server; audio & summarization units).
 * [ ] Pre‑commit (ruff), CI.
+
+### Roadmap milestones
+
+- M1: Core UX (Streaming + Barge-in)
+  - Implement barge-in and response.cancel with streaming audio (#5)
+  - Structured logging and latency metrics instrumentation (#7)
+- M2: Summarization + State
+  - Language-aware summarization policy and OpenAI summarizer (#6)
+  - Add fake Realtime server and expand tests (audio, summarization/pruning) (#9)
+- M3: DX + CI
+  - Typer CLI: run, devices list, test --fake-server (#8)
+  - Add pre-commit (ruff) and improve CI (cache, py312, mypy) (#10)
+- M4: Reliability + Tools
+  - Reliability: reconnect/backoff, keepalive, and error taxonomy (#11)
+  - Add tool/function-calling integration and redaction plugin (#12)
 * [ ] Error taxonomy and reconnection strategy.
 * [ ] Optional: vector memory, tool/function calls, content redaction.
 
