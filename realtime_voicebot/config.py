@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # Audio
     sample_rate_hz: PositiveInt = Field(24_000, env="SAMPLE_RATE_HZ")
     chunk_ms: PositiveInt = Field(40, env="CHUNK_MS")
+    bytes_per_sample: PositiveInt = Field(2, env="BYTES_PER_SAMPLE")
     input_device_id: int | None = Field(None, env="INPUT_DEVICE_ID")
     output_device_id: int | None = Field(None, env="OUTPUT_DEVICE_ID")
 

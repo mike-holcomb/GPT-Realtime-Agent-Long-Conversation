@@ -33,7 +33,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import os
 import sys
 from dataclasses import dataclass, field
 from typing import List, Literal
@@ -45,22 +44,18 @@ import simpleaudio                # speaker playback
 import websockets                 # WebSocket client
 import openai                     # OpenAI Python SDK >= 1.14.0
 
+# ------------------------------ Configuration --------------------------- #
+from realtime_voicebot.config import get_settings
+
 # ------------------------------ Safety key ------------------------------ #
-openai.api_key = os.getenv("OPENAI_API_KEY", "")
+settings = get_settings()
+openai.api_key = settings.openai_api_key
+if settings.openai_base_url:
+    openai.base_url = settings.openai_base_url
 if not openai.api_key:
     raise ValueError(
         "OPENAI_API_KEY not found – set it in your environment before running."
     )
-
-# ---------------------------- Tunable config ---------------------------- #
-SAMPLE_RATE_HZ: int    = 24_000   # Required for pcm16
-CHUNK_DURATION_MS: int = 40       # ~40ms chunks from the mic
-BYTES_PER_SAMPLE: int  = 2        # pcm16 = 2 bytes/sample
-SUMMARY_TRIGGER: int   = 2_000    # Summarize when context >= this (demo value)
-KEEP_LAST_TURNS: int   = 2        # Keep these most-recent turns verbatim
-SUMMARY_MODEL: str     = "gpt-4o-mini"  # Lightweight, fast summarizer
-REALTIME_MODEL: str    = "gpt-4o-realtime-preview"  # Realtime voice model
-VOICE_NAME: str        = "shimmer"
 
 # --------------------------- Conversation state ------------------------- #
 @dataclass
@@ -93,14 +88,14 @@ def print_history(state: ConversationState) -> None:
 
 # ----------------------------- Audio → Queue ---------------------------- #
 async def mic_to_queue(pcm_queue: asyncio.Queue[bytes]) -> None:
-    """Capture raw PCM-16 mic audio and push ~CHUNK_DURATION_MS chunks to queue.
+    """Capture raw PCM-16 mic audio and push ~settings.chunk_ms chunks to queue.
 
     Parameters
     ----------
     pcm_queue: asyncio.Queue[bytes]
         Destination queue for PCM-16 frames (little-endian int16).
     """
-    blocksize = int(SAMPLE_RATE_HZ * CHUNK_DURATION_MS / 1000)
+    blocksize = int(settings.sample_rate_hz * settings.chunk_ms / 1000)
 
     def _callback(indata, _frames, _time, status):
         if status:
@@ -112,7 +107,7 @@ async def mic_to_queue(pcm_queue: asyncio.Queue[bytes]) -> None:
             pass
 
     with sd.RawInputStream(
-        samplerate=SAMPLE_RATE_HZ,
+        samplerate=settings.sample_rate_hz,
         blocksize=blocksize,
         dtype="int16",
         channels=1,
@@ -148,7 +143,7 @@ async def run_summary_llm(text: str) -> str:
     """Call a lightweight model to summarize `text` into one French paragraph."""
     def _call():
         return openai.chat.completions.create(
-            model=SUMMARY_MODEL,
+            model=settings.summary_model,
             temperature=0,
             messages=[
                 {
@@ -169,10 +164,12 @@ async def run_summary_llm(text: str) -> str:
 async def summarise_and_prune(ws, state: ConversationState) -> None:
     """Summarize old turns, insert summary (SYSTEM), delete old items server-side."""
     state.summarising = True
-    print(f"⚠️  Token window ≈{state.latest_tokens} ≥ {SUMMARY_TRIGGER}. Summarising…")
+    print(
+        f"⚠️  Token window ≈{state.latest_tokens} ≥ {settings.summary_trigger_tokens}. Summarising…"
+    )
 
-    old_turns = state.history[:-KEEP_LAST_TURNS]
-    recent_turns = state.history[-KEEP_LAST_TURNS:]
+    old_turns = state.history[:-settings.keep_last_turns]
+    recent_turns = state.history[-settings.keep_last_turns:]
     convo_text = "\n".join(f"{t.role}: {t.text}" for t in old_turns if t.text)
 
     if not convo_text:
@@ -235,13 +232,17 @@ async def fetch_full_item(ws, item_id: str, state: ConversationState, attempts: 
 
 
 # --------------------------- Realtime session --------------------------- #
-async def realtime_session(model: str = REALTIME_MODEL, voice: str = VOICE_NAME, enable_playback: bool = True) -> None:
+async def realtime_session(
+    model: str | None = None, voice: str | None = None, enable_playback: bool = True
+) -> None:
     """Connect to Realtime, spawn audio tasks, and process incoming events."""
     state = ConversationState()
 
     pcm_queue: asyncio.Queue[bytes] = asyncio.Queue()
     assistant_audio: List[bytes] = []
 
+    model = model or settings.realtime_model
+    voice = voice or settings.voice_name
     url = f"wss://api.openai.com/v1/realtime?model={model}"
     headers = {"Authorization": f"Bearer {openai.api_key}", "OpenAI-Beta": "realtime=v1"}
 
@@ -320,15 +321,15 @@ async def realtime_session(model: str = REALTIME_MODEL, voice: str = VOICE_NAME,
                         simpleaudio.play_buffer(
                             b"".join(assistant_audio),
                             1,
-                            BYTES_PER_SAMPLE,
-                            SAMPLE_RATE_HZ,
+                            settings.bytes_per_sample,
+                            settings.sample_rate_hz,
                         )
                         assistant_audio.clear()
 
                     # Summarize if context too large
                     if (
-                        state.latest_tokens >= SUMMARY_TRIGGER
-                        and len(state.history) > KEEP_LAST_TURNS
+                        state.latest_tokens >= settings.summary_trigger_tokens
+                        and len(state.history) > settings.keep_last_turns
                         and not state.summarising
                     ):
                         asyncio.create_task(summarise_and_prune(ws, state))
