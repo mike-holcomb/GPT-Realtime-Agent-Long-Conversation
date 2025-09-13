@@ -6,6 +6,26 @@ This repo is intended to serve as a more robust example of a long conversation a
 
 The original script that was converted can be found here: `original/realtime_agent_cli.py`
 
+## Development
+
+Create a virtual environment with Python 3.11 or newer and install the development
+dependencies:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+pre-commit install
+```
+
+Run the full suite of checks before committing:
+
+```bash
+pre-commit run --all-files
+mypy realtime_voicebot
+pytest -q
+```
+
 ## What the script does (at a glance)
 
 * **Goal:** Build an end‑to‑end *voice‑to‑voice* assistant on OpenAI's Realtime API that streams microphone audio in, receives the assistant's audio out, keeps a rolling conversation log, and automatically **summarizes** older turns when the context grows past a threshold.
