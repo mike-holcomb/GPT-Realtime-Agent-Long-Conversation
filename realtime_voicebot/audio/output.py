@@ -24,7 +24,7 @@ class AudioPlayer:
 
     def __init__(self, cfg: PlayerConfig):
         self.cfg = cfg
-        self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=128)
+        self._queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=128)
         self._task: asyncio.Task | None = None
         self.stream: sd.RawOutputStream | None = None
 
@@ -42,6 +42,7 @@ class AudioPlayer:
         assert self.stream is not None
         loop = asyncio.get_running_loop()
 
+        # 2 bytes/sample for int16, mono channel
         jitter_bytes = int(self.cfg.sample_rate_hz * self.cfg.jitter_ms / 1_000) * 2
         buffer = bytearray()
         while len(buffer) < jitter_bytes:

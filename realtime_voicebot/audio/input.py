@@ -21,7 +21,7 @@ class MicStreamer:
     fixed-size chunks into ``q``.
     """
 
-    def __init__(self, cfg: MicConfig, q: asyncio.Queue[bytes]):
+    def __init__(self, cfg: MicConfig, q: asyncio.Queue[bytes | None]):
         self.cfg = cfg
         self.q = q
         self.stream: sd.RawInputStream | None = None
@@ -36,7 +36,7 @@ class MicStreamer:
         blocksize = int(self.cfg.sample_rate_hz * self.cfg.chunk_ms / 1_000)
 
         def callback(
-            indata, frames, time, status
+            indata, _frames, _time, status
         ) -> None:  # pragma: no cover - sounddevice callback
             if status:
                 # For now we ignore status flags; they can be surfaced via logging later.
@@ -60,4 +60,4 @@ class MicStreamer:
             self.stream.close()
             self.stream = None
         # Signal end of stream to consumers
-        await self.q.put(b"")
+        await self.q.put(None)
