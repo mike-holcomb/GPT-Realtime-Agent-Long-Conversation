@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable
-
+from collections.abc import Callable
+from typing import Any
 
 Tool = Callable[..., Any]
 
@@ -15,4 +15,3 @@ class ToolRegistry:
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
-

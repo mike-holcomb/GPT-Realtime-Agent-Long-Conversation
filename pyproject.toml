@@ -26,6 +26,9 @@ extend-exclude = ["**/.venv", "**/venv", "build", "dist"]
 select = ["E", "F", "W", "B", "UP", "I", "PIE", "SIM"]
 ignore = []
 
+[tool.ruff.lint.per-file-ignores]
+"original/**" = ["ALL"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["realtime_voicebot"]
 combine-as-imports = true

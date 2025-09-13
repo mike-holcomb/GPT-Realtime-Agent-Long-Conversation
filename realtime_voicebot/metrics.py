@@ -29,4 +29,3 @@ turns_total = Counter()
 reconnections_total = Counter()
 audio_frames_dropped_total = Counter()
 eos_to_first_delta_ms = Timer()
-

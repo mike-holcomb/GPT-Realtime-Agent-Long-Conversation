@@ -11,4 +11,3 @@ class Event:
 
 def get_type(ev: dict) -> str:
     return ev.get("type", "")
-

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Iterable
+from collections.abc import Iterable
 
 from ..config import get_settings
 from ..state.conversation import Turn
@@ -26,4 +26,3 @@ class OpenAISummarizer(Summarizer):
         await asyncio.sleep(0)
         joined = " | ".join(s for s in recent if s)
         return ("Summary:") + (" " + joined if joined else " (no content)")
-
