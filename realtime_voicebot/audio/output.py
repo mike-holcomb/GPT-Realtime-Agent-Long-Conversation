@@ -69,6 +69,13 @@ class AudioPlayer:
         if self._task:
             await self._task
 
+    async def flush(self) -> None:
+        """Drop pending audio and stop playback immediately."""
+        while not self._queue.empty():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                self._queue.get_nowait()
+        await self.stop()
+
     async def feed(self, chunk: bytes) -> None:
         with contextlib.suppress(asyncio.QueueFull):
             self._queue.put_nowait(chunk)

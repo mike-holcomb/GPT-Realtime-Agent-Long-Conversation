@@ -23,6 +23,8 @@ class RealtimeClient:
 
         # Outbound audio queue (bytes)
         self._audio_q: asyncio.Queue[bytes] = asyncio.Queue(maxsize=64)
+        self.active_response_id: str | None = None
+        self._canceled: set[str] = set()
 
     async def connect(self) -> None:
         """Connect and start recv/send loops."""
@@ -68,3 +70,16 @@ class RealtimeClient:
         if not self._ws:
             raise RuntimeError("WebSocket is not connected")
         await self._ws.send(json.dumps(payload))
+
+    async def response_cancel(self, response_id: str) -> None:
+        await self.send_json({"type": "response.cancel", "response_id": response_id})
+        self._canceled.add(response_id)
+        if self.active_response_id == response_id:
+            self.active_response_id = None
+
+    async def cancel_active_response(self) -> None:
+        if self.active_response_id:
+            await self.response_cancel(self.active_response_id)
+
+    def is_canceled(self, response_id: str) -> bool:
+        return response_id in self._canceled
