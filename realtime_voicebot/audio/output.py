@@ -27,6 +27,7 @@ class AudioPlayer:
         self._queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=128)
         self._task: asyncio.Task | None = None
         self.stream: sd.RawOutputStream | None = None
+        self._start_lock = asyncio.Lock()
 
     async def start(self) -> None:
         self.stream = sd.RawOutputStream(
@@ -37,6 +38,9 @@ class AudioPlayer:
         )
         self.stream.start()
         self._task = asyncio.create_task(self._run())
+
+    def _is_running(self) -> bool:
+        return self.stream is not None and self._task is not None and not self._task.done()
 
     async def _run(self) -> None:
         assert self.stream is not None
@@ -65,9 +69,12 @@ class AudioPlayer:
         self.stream = None
 
     async def stop(self) -> None:
-        await self._queue.put(None)
-        if self._task:
+        # Only signal the background task if it's running.
+        if self._task is not None:
+            await self._queue.put(None)
             await self._task
+            self._task = None
+            self._task = None
 
     async def flush(self) -> None:
         """Drop pending audio and stop playback immediately."""
@@ -77,5 +84,11 @@ class AudioPlayer:
         await self.stop()
 
     async def feed(self, chunk: bytes) -> None:
+        # If previously flushed/stopped (e.g., barge-in), lazily restart so
+        # subsequent deltas resume playback without external coordination.
+        if not self._is_running():
+            async with self._start_lock:
+                if not self._is_running():
+                    await self.start()
         with contextlib.suppress(asyncio.QueueFull):
             self._queue.put_nowait(chunk)

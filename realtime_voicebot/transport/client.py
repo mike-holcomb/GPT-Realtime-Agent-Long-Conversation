@@ -72,10 +72,12 @@ class RealtimeClient:
         await self._ws.send(json.dumps(payload))
 
     async def response_cancel(self, response_id: str) -> None:
-        await self.send_json({"type": "response.cancel", "response_id": response_id})
+        # Mark as canceled locally first to immediately drop further deltas
+        # even before the server processes the cancel message.
         self._canceled.add(response_id)
         if self.active_response_id == response_id:
             self.active_response_id = None
+        await self.send_json({"type": "response.cancel", "response_id": response_id})
 
     async def cancel_active_response(self) -> None:
         if self.active_response_id:
