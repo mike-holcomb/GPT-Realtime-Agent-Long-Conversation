@@ -7,6 +7,7 @@ import logging
 from contextlib import suppress
 
 import websockets
+
 from .events import EventHandler
 
 
