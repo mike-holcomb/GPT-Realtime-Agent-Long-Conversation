@@ -37,7 +37,11 @@ class Settings(BaseSettings):
     language_policy: Literal["auto", "en", "force"] = "auto"
 
     # pydantic-settings v2 configuration
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False
+        )
 
 
 @lru_cache(maxsize=1)
