@@ -4,12 +4,10 @@ import asyncio
 import base64
 import json
 import logging
-from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
 import websockets
-
-EventHandler = Callable[[dict], Awaitable[None]]
+from .events import EventHandler
 
 
 class RealtimeClient:
@@ -63,6 +61,7 @@ class RealtimeClient:
         """Queue audio to be sent to the server."""
         with suppress(asyncio.QueueFull):
             self._audio_q.put_nowait(chunk)
+        # TODO: surface backpressure metrics when drops occur
 
     async def send_json(self, payload: dict) -> None:
         if not self._ws:
