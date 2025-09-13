@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from ..transport.events import EventHandler, get_type
 
-Handler = Callable[[dict], Awaitable[None]]
+Handler = EventHandler
 
 
 class Dispatcher:
@@ -13,7 +13,7 @@ class Dispatcher:
         self._handlers[event_type] = handler
 
     async def dispatch(self, event: dict) -> None:
-        etype = event.get("type", "")
+        etype = get_type(event)
         handler = self._handlers.get(etype)
         if handler:
             await handler(event)
