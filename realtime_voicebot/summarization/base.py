@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from ..state.conversation import Turn
+if TYPE_CHECKING:  # pragma: no cover - type checking only
+    from ..state.conversation import Turn
 
 
 class Summarizer(Protocol):

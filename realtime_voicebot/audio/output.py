@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib
 import logging
+import sys
 from dataclasses import dataclass
-
-import sounddevice as sd
+from typing import Any
 
 from ..metrics import (
     audio_frames_dropped_total,
@@ -32,11 +33,12 @@ class AudioPlayer:
         self.cfg = cfg
         self._queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=128)
         self._task: asyncio.Task | None = None
-        self.stream: sd.RawOutputStream | None = None
+        self.stream: Any | None = None
         self._start_lock = asyncio.Lock()
         self.log = logging.getLogger(__name__)
 
     async def start(self) -> None:
+        sd = sys.modules.get("sounddevice") or importlib.import_module("sounddevice")
         self.stream = sd.RawOutputStream(
             samplerate=self.cfg.sample_rate_hz,
             dtype="int16",
@@ -99,7 +101,11 @@ class AudioPlayer:
         self.stream = None
 
     async def stop(self, barge_in: bool = False) -> None:
-        # Only signal the background task if it's running.
+        """Stop playback immediately and flush any buffered audio."""
+        # Drain any queued audio so it's not played after cancellation/barge-in.
+        while not self._queue.empty():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                self._queue.get_nowait()
         if self._task is not None:
             await self._queue.put(None)
             await self._task

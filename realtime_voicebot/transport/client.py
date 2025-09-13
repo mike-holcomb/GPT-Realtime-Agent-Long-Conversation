@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import importlib
 import json
 import logging
-
-import websockets
+import sys
+from typing import Any
 
 from ..metrics import (
     audio_frames_dropped_total,
@@ -22,7 +23,7 @@ class RealtimeClient:
         self.headers = headers
         self.on_event = on_event
         self._stop = asyncio.Event()
-        self._ws: websockets.WebSocketClientProtocol | None = None
+        self._ws: Any | None = None
 
         # Outbound audio queue (bytes)
         self._audio_q: asyncio.Queue[bytes] = asyncio.Queue(maxsize=64)
@@ -31,7 +32,8 @@ class RealtimeClient:
 
     async def connect(self) -> None:
         """Connect and start recv/send loops."""
-        async with websockets.connect(self.url, extra_headers=self.headers) as ws:
+        ws_mod = sys.modules.get("websockets") or importlib.import_module("websockets")
+        async with ws_mod.connect(self.url, extra_headers=self.headers) as ws:
             self._ws = ws
             send_task = asyncio.create_task(self._send_audio(ws))
             recv_task = asyncio.create_task(self._recv_loop(ws))
@@ -40,7 +42,7 @@ class RealtimeClient:
             send_task.cancel()
             await asyncio.gather(recv_task, send_task, return_exceptions=True)
 
-    async def _recv_loop(self, ws: websockets.WebSocketClientProtocol) -> None:
+    async def _recv_loop(self, ws: Any) -> None:
         log = logging.getLogger(__name__)
         async for raw in ws:
             try:
@@ -61,7 +63,7 @@ class RealtimeClient:
             )
             await self.on_event(event)
 
-    async def _send_audio(self, ws: websockets.WebSocketClientProtocol) -> None:
+    async def _send_audio(self, ws: Any) -> None:
         while not self._stop.is_set():
             chunk = await self._audio_q.get()
             payload = {
