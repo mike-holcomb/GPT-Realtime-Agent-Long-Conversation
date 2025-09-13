@@ -90,6 +90,7 @@ wheels = [
 ]
 
 [[package]]
+
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -417,6 +418,7 @@ wheels = [
 ]
 
 [[package]]
+
 name = "python-dotenv"
 version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
