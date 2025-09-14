@@ -177,13 +177,15 @@ HANDLERS: dict[str, Callable[[dict], Awaitable[None]]] = {
 
 ### 8) Developer experience
 
-* **Typer‑based CLI**:
+* **Typer‑based CLI** (CLI flags > environment > `.env`):
 
 ```bash
-voicebot run --model gpt-4o-realtime-preview --voice shimmer --summary-threshold 4000
+voicebot run --model gpt-4o-realtime-preview --voice shimmer --summary-threshold 4000 --verbose
 voicebot devices list
 voicebot test --fake-server
 ```
+
+Use `--verbose` to print the effective settings.
 
 * **Tests**:
 
