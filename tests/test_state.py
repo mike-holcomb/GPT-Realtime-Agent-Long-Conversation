@@ -3,7 +3,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from realtime_voicebot.state.conversation import ConversationState, Turn
+from realtime_voicebot.state.conversation import (
+    ConversationState,
+    SummaryPolicy,
+    Turn,
+)
 from realtime_voicebot.state.memory import MemoryStore
 
 
@@ -45,3 +49,16 @@ def test_memory_store_set_and_get():
     memory.set("color", "blue")
     assert memory.get("color") == "blue"
     assert memory.get("missing") is None
+
+
+def test_summary_policy_language_detection_and_trigger():
+    policy = SummaryPolicy(threshold_tokens=100, keep_last_turns=2, language_policy="auto")
+    state = ConversationState(latest_tokens=150)
+    state.append(Turn(role="user", item_id="u1", text="hola"))
+    state.append(Turn(role="assistant", item_id="a1", text="hola"))
+    state.append(Turn(role="user", item_id="u2", text="gracias"))
+    assert policy.should_summarize(state)
+    assert policy.determine_language(state.history) == "es"
+
+    policy_en = SummaryPolicy(threshold_tokens=100, keep_last_turns=2, language_policy="en")
+    assert policy_en.determine_language(state.history) == "en"

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Literal
 
 from ..summarization.base import Summarizer
+from ..transport.client import RealtimeClient
 
 Role = Literal["user", "assistant", "system"]
 
@@ -13,6 +15,38 @@ class Turn:
     role: Role
     item_id: str
     text: str | None = None
+
+
+def _detect_language(texts: list[str]) -> str:
+    """Very small heuristic language detector.
+
+    This intentionally avoids heavy dependencies. It looks for common Spanish
+    or French words in the recent turns and falls back to English.
+    """
+    sample = " ".join(t.lower() for t in texts)
+    if re.search(r"\b(hola|gracias|por favor|adios)\b", sample):
+        return "es"
+    if re.search(r"\b(bonjour|merci|s'il|au revoir)\b", sample):
+        return "fr"
+    return "en"
+
+
+@dataclass
+class SummaryPolicy:
+    threshold_tokens: int
+    keep_last_turns: int
+    language_policy: Literal["auto", "en", "force"] = "auto"
+
+    def should_summarize(self, state: ConversationState) -> bool:
+        return state.should_summarize(self.threshold_tokens, self.keep_last_turns)
+
+    def determine_language(self, turns: list[Turn]) -> str | None:
+        if self.language_policy == "en":
+            return "en"
+        if self.language_policy in {"auto", "force"}:
+            texts = [t.text or "" for t in turns if t.text]
+            return _detect_language(texts) if texts else "en"
+        return None
 
 
 @dataclass
@@ -38,6 +72,7 @@ class ConversationState:
         summarizer: Summarizer,
         keep_last_turns: int,
         language: str | None = None,
+        client: RealtimeClient | None = None,
     ) -> None:
         """Summarize conversation and keep only the last ``keep_last_turns``.
 
@@ -45,13 +80,47 @@ class ConversationState:
         of the history. ``summary_count`` is incremented each time this method is
         called.
         """
+        # Defer summarization/pruning if any of the turns that would be pruned
+        # are still missing transcripts. This avoids deleting server-side items
+        # that have not yet been backfilled by conversation.item.retrieved.
+        old_turns = self.history[:-keep_last_turns]
+        pending_ids = [
+            t.item_id
+            for t in old_turns
+            if t.role != "system" and (t.text is None or not str(t.text).strip())
+        ]
+        if pending_ids:
+            # Simply skip summarization for now; a later event (e.g. retrieved
+            # transcripts or another response.done) can re-trigger it.
+            return
+
         self.summarising = True
         try:
             summary = await summarizer.summarize(self.history, language)
         finally:
             self.summarising = False
 
+        recent = self.history[-keep_last_turns:]
         self.summary_count += 1
-        summary_turn = Turn(role="system", item_id=f"summary-{self.summary_count}", text=summary)
-        self.history = [summary_turn] + self.history[-keep_last_turns:]
+        summary_id = f"summary-{self.summary_count}"
+        summary_turn = Turn(role="system", item_id=summary_id, text=summary)
+        self.history = [summary_turn] + recent
         self.latest_tokens = 0
+
+        if client:
+            await client.send_json(
+                {
+                    "type": "conversation.item.create",
+                    "previous_item_id": "root",
+                    "item": {
+                        "id": summary_id,
+                        "type": "message",
+                        "role": "system",
+                        "content": [{"type": "input_text", "text": summary}],
+                    },
+                }
+            )
+            for turn in old_turns:
+                await client.send_json(
+                    {"type": "conversation.item.delete", "item_id": turn.item_id}
+                )

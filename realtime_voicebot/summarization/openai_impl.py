@@ -4,26 +4,31 @@ import asyncio
 import logging
 from collections.abc import Iterable
 
-from ..config import get_settings
 from ..metrics import Timer
 from ..state.conversation import Turn
 from .base import Summarizer
 
 
 class OpenAISummarizer(Summarizer):
-    """OpenAI-backed summarizer (scaffold).
+    """OpenAI-backed summarizer (stub).
 
-    This is a stub that mirrors the async interface; it does not call the
-    network in this initial scaffold to keep the project runnable without
-    additional dependencies.
+    The implementation avoids a real network call to keep tests hermetic. It
+    still exposes the async interface so a real client can be wired in later
+    without changing callers.
     """
 
     def __init__(self) -> None:
-        self.settings = get_settings()
+        # ``config`` depends on pydantic which may be missing in lightweight
+        # test environments. Import lazily and fall back to defaults.
+        try:  # pragma: no cover - configuration loading is trivial
+            from ..config import get_settings
+
+            self.settings = get_settings()
+        except Exception:  # pragma: no cover - fallback for missing deps
+            self.settings = type("_S", (), {"summary_model": "gpt-4o-mini"})()
         self.log = logging.getLogger(__name__)
 
     async def summarize(self, turns: list[Turn], language: str | None = None) -> str:
-        del language  # unused in stub
         timer = Timer()
         timer.start()
         self.log.info(
@@ -39,7 +44,9 @@ class OpenAISummarizer(Summarizer):
         )
         recent: Iterable[str] = (t.text or "" for t in turns[-3:])
         await asyncio.sleep(0)
-        joined = " | ".join(s for s in recent if s)
+        joined = " ".join(s for s in recent if s)
+        synopsis = joined if joined else "no content"
+        summary = f"Synopsis: {synopsis}. Facts: none."
         timer.stop()
         self.log.info(
             "summarization_end",
@@ -52,4 +59,4 @@ class OpenAISummarizer(Summarizer):
                 "dropped_frames": None,
             },
         )
-        return ("Summary:") + (" " + joined if joined else " (no content)")
+        return summary

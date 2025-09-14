@@ -4,6 +4,8 @@ import base64
 import logging
 
 from ..audio.output import AudioPlayer
+from ..state.conversation import ConversationState, SummaryPolicy, Turn
+from ..summarization.base import Summarizer
 from ..transport.client import RealtimeClient
 
 logger = logging.getLogger(__name__)
@@ -32,3 +34,31 @@ async def handle_conversation_item_created(
         await player.flush()
         await client.cancel_active_response()
         logger.info("barge_in", extra={"response_id": response_id, "turn_id": item.get("id")})
+
+
+async def handle_response_done(
+    event: dict,
+    client: RealtimeClient,
+    state: ConversationState,
+    summarizer: Summarizer,
+    policy: SummaryPolicy,
+) -> None:
+    """Handle ``response.done`` by recording assistant text and summarizing."""
+
+    resp = event.get("response", {})
+    for item in resp.get("output", []):
+        if item.get("role") == "assistant":
+            txt = item.get("content", [{}])[0].get("transcript")
+            state.append(Turn(role="assistant", item_id=item.get("id", ""), text=txt))
+
+    usage = resp.get("usage", {})
+    state.latest_tokens = usage.get("total_tokens", 0)
+
+    if policy.should_summarize(state):
+        language = policy.determine_language(state.history)
+        await state.summarize_and_prune(
+            summarizer,
+            keep_last_turns=policy.keep_last_turns,
+            language=language,
+            client=client,
+        )
