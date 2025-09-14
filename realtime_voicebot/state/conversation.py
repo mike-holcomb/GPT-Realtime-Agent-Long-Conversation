@@ -80,13 +80,26 @@ class ConversationState:
         of the history. ``summary_count`` is incremented each time this method is
         called.
         """
+        # Defer summarization/pruning if any of the turns that would be pruned
+        # are still missing transcripts. This avoids deleting server-side items
+        # that have not yet been backfilled by conversation.item.retrieved.
+        old_turns = self.history[:-keep_last_turns]
+        pending_ids = [
+            t.item_id
+            for t in old_turns
+            if t.role != "system" and (t.text is None or not str(t.text).strip())
+        ]
+        if pending_ids:
+            # Simply skip summarization for now; a later event (e.g. retrieved
+            # transcripts or another response.done) can re-trigger it.
+            return
+
         self.summarising = True
         try:
             summary = await summarizer.summarize(self.history, language)
         finally:
             self.summarising = False
 
-        old_turns = self.history[:-keep_last_turns]
         recent = self.history[-keep_last_turns:]
         self.summary_count += 1
         summary_id = f"summary-{self.summary_count}"
