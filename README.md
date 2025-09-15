@@ -26,6 +26,23 @@ mypy realtime_voicebot
 pytest -q
 ```
 
+## What Works Today
+
+The repository now contains a layered, testable implementation of a realtime voice assistant that goes beyond the original tutorial script. Highlights:
+
+- Streaming playback: Assistant audio is played as `response.audio.delta` arrives using a jitter-buffered `AudioPlayer`.
+- Barge-in: On a new `user` item, playback is flushed and the active `response` is canceled for a responsive UX.
+- Transport client: `RealtimeClient` encapsulates connect/session.update, send helpers, a receive loop with dispatcher, keepalive, and reconnect with backoff; it resends configuration on resume.
+- State and summarization policy: `ConversationState` tracks history; summaries are inserted locally and on the server as `system` messages with pruning of old item IDs. Summarization is language-policy aware (auto/en/force) and defers until transcripts are available.
+- Tools/function-calling: Minimal tool registry (`clock`, `http_get`) with advertising in session config and `tool_call` → `tool_result` round‑trip.
+- Privacy: PII redaction of emails and US phone numbers before logging or storing transcripts.
+- Observability: Structured JSON logging (optional) and basic metrics/timers (queue depths, dropped frames, reconnections, timing).
+- CLI and DX: Typer CLI (`voicebot`) with `run`, `devices list`, and `test --fake-server`; ruff + mypy + pytest; pre‑commit hooks; CI for Python 3.11/3.12.
+
+See the Architecture section below for module layout. The original tutorial script remains available under `original/` for reference.
+
+---
+
 ## What the script does (at a glance)
 
 * **Goal:** Build an end‑to‑end *voice‑to‑voice* assistant on OpenAI's Realtime API that streams microphone audio in, receives the assistant's audio out, keeps a rolling conversation log, and automatically **summarizes** older turns when the context grows past a threshold.
@@ -57,15 +74,14 @@ pytest -q
 
 ---
 
-## Key limitations to address
+## Remaining Gaps (to address)
 
-1. **Tight coupling**: Audio, transport, protocol handling, state, and summarization all live in one module; hard to test, replace, or extend any piece in isolation.
-2. **Playback latency**: Assistant audio is played **after** the reply completes; not streaming. This increases perceived latency.
-3. **Resilience gaps**: No reconnection/backoff, heartbeat, or error taxonomy; queue backpressure is dropped rather than measured/controlled.
-4. **State hygiene**: Local summary is stored as `assistant` but sent as `system`. Token threshold and language are hard‑coded (summary is forced to French).
-5. **Observability**: No structured logs, metrics, or timing to understand turn latency (end‑of‑speech → first audio).
-6. **Extensibility**: No tool/function‑calling pathway, no plugin system for redaction, guardrails, or memory strategies.
-7. **DX/DevOps**: No packaging, tests, linting, typing enforcement, or CI.
+1. **App orchestration**: `app.run` is a stub. It should wire `RealtimeClient`, `MicStreamer → append_audio`, `AudioPlayer`, handler registration, and graceful lifecycle.
+2. **Summarizer backend**: `OpenAISummarizer` is a stub; replace with a real OpenAI‑backed implementation that honors the language policy. Keep tests hermetic via mocking.
+3. **Transcript backfill**: Implement `conversation.item.retrieved` handler to backfill missing transcripts; ensure summarization defers until backfill completes.
+4. **Latency timers wiring**: Wire EoS→first‑delta and first‑delta→playback timers at appropriate events (e.g., `response.created`/first `response.audio.delta`), and add tests.
+5. **Error handling**: Add explicit handlers for `response.error` and related failure paths with error taxonomy.
+6. **Progressive summary + memory**: Evolve summarization to maintain a short synopsis plus a stable "facts" sheet; integrate `MemoryStore` where useful.
 
 ---
 
@@ -100,8 +116,13 @@ realtime_voicebot/
   tests/
     test_transport.py
     test_state.py
-    test_handlers.py
+    test_audio_player.py
+    test_audio.py
     test_summarization.py
+    test_barge_in.py
+    test_tools.py
+    test_logging_metrics.py
+    test_redaction.py
 ```
 
 ### Tool contract
@@ -326,32 +347,41 @@ class OpenAISummarizer:
 
 ---
 
-## Rollout checklist
+## Rollout checklist (status)
 
-* [x] Extract layers (transport, audio, state, summarization, handlers).
-* [ ] Streaming playback + barge‑in + `response.cancel`. ([OpenAI Platform][2])
-* [ ] Replace hard‑coded French with language‑aware summarization policy.
-* [ ] Add structured logging, basic metrics, and latency probes.
-* [ ] Pydantic settings + Typer CLI.
-* [ ] Tests (fake server; audio & summarization units).
-* [ ] Pre‑commit (ruff), CI.
+Completed:
 
-### Roadmap milestones
+- [x] Extract layers (transport, audio, state, summarization, handlers)
+- [x] Streaming playback + barge‑in + `response.cancel` ([OpenAI Platform][2])
+- [x] Language‑aware summarization policy (backend currently stubbed)
+- [x] Structured logging, basic metrics; initial latency probes
+- [x] Pydantic settings + Typer CLI
+- [x] Tests (fake server; audio, barge‑in, summarization, tools, logging)
+- [x] Pre‑commit (ruff), CI
+- [x] Reliability: reconnect/backoff, keepalive, error taxonomy (initial)
+- [x] Tool/function‑calling integration + registry
 
-- M1: Core UX (Streaming + Barge-in)
-  - Implement barge-in and response.cancel with streaming audio (#5)
-  - Structured logging and latency metrics instrumentation (#7)
+Remaining (tracked as issues):
+
+- [ ] Wire `app.run` orchestrator (end‑to‑end runtime)
+- [ ] Replace `OpenAISummarizer` stub with real client (mock in tests)
+- [ ] Transcript backfill: `conversation.item.retrieved` handler + tests
+- [ ] Wire latency timers: EoS→first‑delta, first‑delta→playback + tests
+- [ ] Expand error handling for `response.error` and edge cases
+- [ ] Progressive summary + memory integration
+
+### Roadmap milestones (status)
+
+- M1: Core UX (Streaming + Barge‑in)
+  - Status: Completed (streaming playback, barge‑in, response.cancel, basic metrics)
 - M2: Summarization + State
-  - Language-aware summarization policy and OpenAI summarizer (#6)
-  - Add fake Realtime server and expand tests (audio, summarization/pruning) (#9)
+  - Status: Partially completed (policy + server‑side system summary + pruning); OpenAI summarizer backend pending; transcript backfill pending
 - M3: DX + CI
-  - Typer CLI: run, devices list, test --fake-server (#8)
-  - Add pre-commit (ruff) and improve CI (cache, py312, mypy) (#10)
+  - Status: Completed (Typer CLI, pre‑commit, CI, mypy, pytest, fakes)
 - M4: Reliability + Tools
-  - Reliability: reconnect/backoff, keepalive, and error taxonomy (#11)
-  - Add tool/function-calling integration and redaction plugin (#12)
-* [ ] Error taxonomy and reconnection strategy.
-* [ ] Optional: vector memory, tool/function calls, content redaction.
+  - Status: Partially completed (reconnect/backoff/keepalive, error taxonomy, tools); expand error handling
+
+Optional next: vector memory, richer tool ecosystem, additional redaction strategies.
 
 With this plan, you keep the excellent "straight‑line" demo ergonomics while gaining the pieces that make it robust in production: *abstraction boundaries, observability, and low‑latency UX*.
 
