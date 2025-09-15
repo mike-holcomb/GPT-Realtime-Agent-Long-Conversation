@@ -3,6 +3,9 @@ from __future__ import annotations
 import sys
 import types
 
+import pytest
+
+pytest.importorskip("typer")
 from typer.testing import CliRunner
 
 from realtime_voicebot import cli
