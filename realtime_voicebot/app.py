@@ -18,6 +18,7 @@ async def run(settings: Settings | None = None) -> None:
     from .audio.output import AudioPlayer, PlayerConfig
     from .handlers.core import (
         handle_conversation_item_created,
+        handle_conversation_item_retrieved,
         handle_response_audio_delta,
         handle_response_created,
         handle_response_done,
@@ -81,6 +82,12 @@ async def run(settings: Settings | None = None) -> None:
         lambda ev: handle_conversation_item_created(ev, client, player),
     )
     dispatcher.on(
+        "conversation.item.retrieved",
+        lambda ev: handle_conversation_item_retrieved(
+            ev, client, state, summarizer, policy
+        ),
+    )
+    dispatcher.on(
         "response.done",
         lambda ev: handle_response_done(ev, client, state, summarizer, policy),
     )
@@ -89,9 +96,6 @@ async def run(settings: Settings | None = None) -> None:
         lambda ev: handle_tool_call(ev, client, registry),
     )
     dispatcher.on("response.error", lambda ev: handle_response_error(ev, client))
-
-    # Placeholder for future transcript backfill support.
-    dispatcher.on("conversation.item.retrieved", lambda _ev: asyncio.sleep(0))
 
     # Mic input queue ---------------------------------------------------------
     audio_q: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=32)

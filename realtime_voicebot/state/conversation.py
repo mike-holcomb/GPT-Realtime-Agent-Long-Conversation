@@ -93,13 +93,14 @@ class ConversationState:
         # Defer summarization/pruning if any of the turns that would be pruned
         # are still missing transcripts. This avoids deleting server-side items
         # that have not yet been backfilled by conversation.item.retrieved.
+        def _has_pending(turns: list[Turn]) -> bool:
+            return any(
+                t.role != "system" and (t.text is None or not str(t.text).strip())
+                for t in turns
+            )
+
         old_turns = self.history[:-keep_last_turns]
-        pending_ids = [
-            t.item_id
-            for t in old_turns
-            if t.role != "system" and (t.text is None or not str(t.text).strip())
-        ]
-        if pending_ids:
+        if _has_pending(old_turns):
             # Simply skip summarization for now; a later event (e.g. retrieved
             # transcripts or another response.done) can re-trigger it.
             return
@@ -109,6 +110,11 @@ class ConversationState:
             summary = await summarizer.summarize(self.history, language)
         finally:
             self.summarising = False
+
+        # Re-check after summarization in case new placeholder turns arrived.
+        pruned_turns = self.history[:-keep_last_turns]
+        if _has_pending(pruned_turns):
+            return
 
         recent = self.history[-keep_last_turns:]
         self.summary_count += 1
@@ -130,7 +136,7 @@ class ConversationState:
                     },
                 }
             )
-            for turn in old_turns:
+            for turn in pruned_turns:
                 await client.send_json(
                     {"type": "conversation.item.delete", "item_id": turn.item_id}
                 )

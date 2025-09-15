@@ -84,3 +84,49 @@ async def handle_response_error(event: dict, client: RealtimeClient) -> None:
         client.active_response_id = None
     if response_id:
         client.clear_canceled(response_id)
+
+
+async def handle_conversation_item_retrieved(
+    event: dict,
+    client: RealtimeClient | None,
+    state: ConversationState,
+    summarizer: Summarizer,
+    policy: SummaryPolicy,
+) -> None:
+    """Backfill transcripts and retry summarization if conditions are met."""
+
+    item = event.get("item", {})
+    item_id = item.get("id") or event.get("item_id")
+    if not item_id:
+        return
+
+    transcript: str | None = None
+    for content in item.get("content", []):
+        transcript = content.get("transcript") or content.get("text")
+        if transcript:
+            break
+
+    if not transcript:
+        return
+
+    updated = False
+    text = transcript
+    if state.redact and text:
+        text = state.redact(text)
+    for turn in state.history:
+        if turn.item_id == item_id:
+            turn.text = text
+            updated = True
+            break
+
+    if not updated:
+        return
+
+    if policy.should_summarize(state):
+        language = policy.determine_language(state.history)
+        await state.summarize_and_prune(
+            summarizer,
+            keep_last_turns=policy.keep_last_turns,
+            language=language,
+            client=client,
+        )
