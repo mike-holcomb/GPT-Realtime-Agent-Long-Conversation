@@ -90,13 +90,13 @@ class ConversationState:
         of the history. ``summary_count`` is incremented each time this method is
         called.
         """
+
         # Defer summarization/pruning if any of the turns that would be pruned
         # are still missing transcripts. This avoids deleting server-side items
         # that have not yet been backfilled by conversation.item.retrieved.
         def _has_pending(turns: list[Turn]) -> bool:
             return any(
-                t.role != "system" and (t.text is None or not str(t.text).strip())
-                for t in turns
+                t.role != "system" and (t.text is None or not str(t.text).strip()) for t in turns
             )
 
         old_turns = self.history[:-keep_last_turns]

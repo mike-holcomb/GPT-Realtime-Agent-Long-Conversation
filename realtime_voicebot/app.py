@@ -79,13 +79,11 @@ async def run(settings: Settings | None = None) -> None:
     )
     dispatcher.on(
         "conversation.item.created",
-        lambda ev: handle_conversation_item_created(ev, client, player),
+        lambda ev: handle_conversation_item_created(ev, client, player, state),
     )
     dispatcher.on(
         "conversation.item.retrieved",
-        lambda ev: handle_conversation_item_retrieved(
-            ev, client, state, summarizer, policy
-        ),
+        lambda ev: handle_conversation_item_retrieved(ev, client, state, summarizer, policy),
     )
     dispatcher.on(
         "response.done",

@@ -33,16 +33,34 @@ async def handle_response_audio_delta(
 
 
 async def handle_conversation_item_created(
-    event: dict, client: RealtimeClient, player: AudioPlayer
+    event: dict,
+    client: RealtimeClient,
+    player: AudioPlayer,
+    state: ConversationState | None = None,
 ) -> None:
     item = event.get("item", {})
     if item.get("role") != "user":
         return
+
+    item_id = item.get("id")
+    transcript: str | None = None
+    for content in item.get("content", []):
+        transcript = content.get("transcript") or content.get("text")
+        if transcript:
+            break
+
+    if state is not None and item_id:
+        existing = next((turn for turn in state.history if turn.item_id == item_id), None)
+        if existing is None:
+            state.append(Turn(role="user", item_id=item_id, text=transcript))
+        elif transcript:
+            existing.text = state.redact(transcript) if state.redact else transcript
+
     response_id = client.active_response_id
     if response_id:
         await player.flush()
         await client.cancel_active_response()
-        logger.info("barge_in", extra={"response_id": response_id, "turn_id": item.get("id")})
+        logger.info("barge_in", extra={"response_id": response_id, "turn_id": item_id})
 
 
 async def handle_response_done(
@@ -110,17 +128,17 @@ async def handle_conversation_item_retrieved(
         return
 
     updated = False
-    text = transcript
-    if state.redact and text:
-        text = state.redact(text)
+    redacted = state.redact(transcript) if state.redact and transcript else transcript
     for turn in state.history:
         if turn.item_id == item_id:
-            turn.text = text
+            turn.text = redacted
             updated = True
             break
 
     if not updated:
-        return
+        role = item.get("role") or "user"
+        state.append(Turn(role=role, item_id=item_id, text=transcript))
+        updated = True
 
     if policy.should_summarize(state):
         language = policy.determine_language(state.history)

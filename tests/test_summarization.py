@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from realtime_voicebot.handlers.core import (
+    handle_conversation_item_created,
     handle_conversation_item_retrieved,
     handle_response_done,
 )
@@ -43,7 +44,29 @@ def test_summarize_and_prune_inserts_summary_and_keeps_last_turns():
 def test_conversation_item_retrieved_backfills_text():
     async def main():
         state = ConversationState()
-        state.append(Turn(role="user", item_id="u1"))
+
+        class DummyClient:
+            def __init__(self) -> None:
+                self.active_response_id: str | None = None
+
+            async def cancel_active_response(self) -> None:  # pragma: no cover - not used
+                raise AssertionError("cancel should not be called")
+
+        class DummyPlayer:
+            async def flush(self) -> None:  # pragma: no cover - not used
+                raise AssertionError("flush should not be called")
+
+        await handle_conversation_item_created(
+            {
+                "type": "conversation.item.created",
+                "item": {"id": "u1", "role": "user"},
+            },
+            DummyClient(),
+            DummyPlayer(),
+            state,
+        )
+
+        assert state.history[0].text is None
 
         class DummySummarizer:
             async def summarize(self, turns, language=None):  # pragma: no cover - unused
@@ -66,6 +89,26 @@ def test_conversation_item_retrieved_backfills_text():
         )
 
         assert state.history[0].text == "hola"
+
+        # Retrieval without a pre-existing placeholder appends a new turn.
+        state2 = ConversationState()
+        await handle_conversation_item_retrieved(
+            {
+                "type": "conversation.item.retrieved",
+                "item": {
+                    "id": "u2",
+                    "role": "user",
+                    "content": [{"type": "input_text", "transcript": "bonjour"}],
+                },
+            },
+            None,
+            state2,
+            DummySummarizer(),
+            policy,
+        )
+
+        assert [turn.item_id for turn in state2.history] == ["u2"]
+        assert state2.history[0].text == "bonjour"
 
     asyncio.run(main())
 
