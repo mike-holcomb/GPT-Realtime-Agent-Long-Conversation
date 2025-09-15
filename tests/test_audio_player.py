@@ -33,14 +33,15 @@ from realtime_voicebot.audio.output import AudioPlayer, PlayerConfig  # noqa: E4
 
 class DummyStream:
     def __init__(self, *args, **kwargs):
-        self.started = False
+        self.start_calls = 0
         self.stopped = False
+        self.write_calls: list[bytes] = []
 
     def start(self) -> None:
-        self.started = True
+        self.start_calls += 1
 
     def write(self, data: bytes) -> None:  # pragma: no cover - stub
-        pass
+        self.write_calls.append(data)
 
     def stop(self) -> None:
         self.stopped = True
@@ -61,5 +62,43 @@ def test_flush_stops_player(monkeypatch):
         await player.flush()
         assert player.stream is None
         assert player._queue.empty()
+
+    asyncio.run(run())
+
+
+def test_restart_after_flush_respects_jitter(monkeypatch):
+    import sounddevice as sd
+
+    async def run() -> None:
+        dummy = DummyStream()
+        monkeypatch.setattr(sd, "RawOutputStream", lambda *a, **k: dummy)
+        player = AudioPlayer(PlayerConfig(sample_rate_hz=1000, jitter_ms=10))
+
+        loop = asyncio.get_running_loop()
+
+        async def fake_run_in_executor(executor, func, *args):
+            func(*args)
+            return None
+
+        monkeypatch.setattr(loop, "run_in_executor", fake_run_in_executor)
+
+        jitter_bytes = int(player.cfg.sample_rate_hz * player.cfg.jitter_ms / 1_000) * 2
+
+        await player.start()
+        await player.feed(b"a" * (jitter_bytes // 2))
+        await player.flush()
+        assert dummy.start_calls == 1
+
+        await player.feed(b"b" * (jitter_bytes // 2))
+        await asyncio.sleep(0)
+        assert dummy.start_calls == 2
+        assert dummy.write_calls == []
+
+        await player.feed(b"c" * (jitter_bytes // 2))
+        await asyncio.sleep(0)
+        assert len(dummy.write_calls) == 1
+        assert len(dummy.write_calls[0]) == jitter_bytes
+
+        await player.flush()
 
     asyncio.run(run())
