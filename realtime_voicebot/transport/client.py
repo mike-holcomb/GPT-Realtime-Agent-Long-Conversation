@@ -18,6 +18,10 @@ from ..metrics import (
 from .events import EventHandler
 
 
+class ConnectionLost(Exception):
+    """Internal signal indicating the transport connection dropped."""
+
+
 class RealtimeClient:
     """Minimal WebSocket client for the OpenAI Realtime API."""
 
@@ -50,8 +54,29 @@ class RealtimeClient:
         self._canceled: set[str] = set()
 
     async def connect(self) -> None:
-        """Connect and maintain the WebSocket with retries."""
+        """Connect and maintain the WebSocket with retries.
+
+        Only network/WebSocket failures trigger reconnect. Any other exception
+        (e.g. a bug in an event handler) is propagated to the caller so it can
+        fail fast with a useful traceback.
+        """
         ws_mod = sys.modules.get("websockets") or importlib.import_module("websockets")
+        # Build a tuple of exception types that indicate transport-level failure.
+        network_excs: tuple[type[BaseException], ...]
+        exc_types: list[type[BaseException]] = [ConnectionLost, OSError, ConnectionError]
+        ws_exc_mod = getattr(ws_mod, "exceptions", None)
+        for name in (
+            "ConnectionClosed",
+            "WebSocketException",
+            "InvalidStatus",
+            "InvalidURI",
+            "PayloadTooBig",
+        ):
+            exc = getattr(ws_exc_mod, name, None) if ws_exc_mod else None
+            if isinstance(exc, type) and issubclass(exc, BaseException):
+                exc_types.append(exc)
+        network_excs = tuple(exc_types)
+
         backoff = self.backoff_base
         connected_once = False
         while not self._stop.is_set():
@@ -65,9 +90,13 @@ class RealtimeClient:
                             json.dumps({"type": "session.update", "session": self.session_config})
                         )
                     await self._run_ws(ws)
+                    # _run_ws only returns on explicit close; honor stop flag.
                     if self._stop.is_set():
                         break
-            except Exception:
+            except asyncio.CancelledError:
+                # Never swallow cancellation; propagate immediately.
+                raise
+            except network_excs:
                 logging.getLogger(__name__).warning(
                     "connection_error",
                     extra={"error_category": ErrorCategory.NETWORK.value},
@@ -137,17 +166,36 @@ class RealtimeClient:
         if self.ping_interval:
             tasks.append(asyncio.create_task(self._keepalive(ws)))
         stop_task = asyncio.create_task(self._stop.wait())
-        done, _ = await asyncio.wait(tasks + [stop_task], return_when=asyncio.FIRST_COMPLETED)
+
+        done, pending = await asyncio.wait(tasks + [stop_task], return_when=asyncio.FIRST_COMPLETED)
+
+        # If we were asked to stop, cancel workers and return cleanly.
         if stop_task in done:
             for t in tasks:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             return
+
+        # Some worker finished first (either cleanly or with an error).
+        # Cancel the rest and propagate the right exception semantics.
         for t in tasks:
-            t.cancel()
+            if t not in done:
+                t.cancel()
         stop_task.cancel()
         await asyncio.gather(*tasks, stop_task, return_exceptions=True)
-        raise RuntimeError("connection_lost")
+
+        # Prefer to surface the original exception if any worker failed.
+        worker_done = next((t for t in done if t is not stop_task), None)
+        if worker_done:
+            exc = worker_done.exception()
+            if exc is not None:
+                # Never convert CancelledError; just bubble up.
+                if isinstance(exc, asyncio.CancelledError):
+                    raise exc
+                raise exc
+
+        # Otherwise, treat it as a transport-level connection loss.
+        raise ConnectionLost()
 
     async def close(self) -> None:
         self._stop.set()
