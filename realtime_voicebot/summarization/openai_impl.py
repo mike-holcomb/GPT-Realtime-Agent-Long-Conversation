@@ -139,12 +139,13 @@ class OpenAISummarizer(Summarizer):
 
             if not getattr(settings, "azure_openai_api_key", ""):
                 raise RuntimeError("AZURE_OPENAI_API_KEY is required for summarization")
-            if not getattr(settings, "azure_openai_endpoint", None):
+            azure_endpoint = settings.azure_openai_endpoint
+            if not azure_endpoint:
                 raise RuntimeError("AZURE_OPENAI_ENDPOINT is required for summarization")
             return AsyncAzureOpenAI(
                 api_key=settings.azure_openai_api_key,
                 api_version=settings.azure_openai_api_version,
-                azure_endpoint=settings.azure_openai_endpoint,
+                azure_endpoint=azure_endpoint,
             )
 
         from openai import AsyncOpenAI

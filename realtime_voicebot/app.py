@@ -27,6 +27,7 @@ async def run(settings: Settings | None = None) -> None:
     from .handlers.tools import ToolRegistry, clock_tool, handle_tool_call, http_tool
     from .redaction import Redactor
     from .state.conversation import ConversationState, SummaryPolicy
+    from .summarization.base import Summarizer
     from .summarization.openai_impl import NullSummarizer, OpenAISummarizer
     from .transport.client import RealtimeClient, build_ws_url_headers
     from .transport.events import Dispatcher
@@ -35,6 +36,7 @@ async def run(settings: Settings | None = None) -> None:
 
     state = ConversationState(redact=Redactor(enabled=settings.redact_pii).redact)
     summary_model = (settings.summary_model or "").strip()
+    summarizer: Summarizer
     if not summary_model or summary_model.lower() in {"none", "null", "off", "disabled"}:
         summarizer = NullSummarizer()
     else:
