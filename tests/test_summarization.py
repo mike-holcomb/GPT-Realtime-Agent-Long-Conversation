@@ -1,9 +1,11 @@
 import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from realtime_voicebot.config import Settings
 from realtime_voicebot.handlers.core import (
     handle_conversation_item_created,
     handle_conversation_item_retrieved,
@@ -14,10 +16,36 @@ from realtime_voicebot.state.conversation import (
     SummaryPolicy,
     Turn,
 )
-from realtime_voicebot.summarization.openai_impl import OpenAISummarizer
+from realtime_voicebot.summarization.openai_impl import (
+    NullSummarizer,
+    OpenAISummarizer,
+)
 from realtime_voicebot.transport.client import RealtimeClient
 from realtime_voicebot.transport.events import Dispatcher
 from tests.fakes.fake_realtime_server import FakeRealtimeServer
+
+
+class _FakeResponses:
+    def __init__(self, calls: list[dict], text: str) -> None:
+        self._calls = calls
+        self._text = text
+
+    async def create(self, **kwargs):
+        self._calls.append(kwargs)
+        return SimpleNamespace(
+            output=[
+                SimpleNamespace(
+                    content=[SimpleNamespace(text=self._text)],
+                )
+            ],
+            output_text=self._text,
+        )
+
+
+class FakeOpenAIClient:
+    def __init__(self, text: str) -> None:
+        self.calls: list[dict] = []
+        self.responses = _FakeResponses(self.calls, text)
 
 
 def test_summarize_and_prune_inserts_summary_and_keeps_last_turns():
@@ -232,9 +260,32 @@ def test_summary_defers_until_transcript_backfilled():
 
 def test_openai_summarizer_returns_non_empty_string():
     async def main():
-        summarizer = OpenAISummarizer()
-        text = await summarizer.summarize([Turn(role="user", item_id="1", text="hello")])
-        assert text.strip() != ""
+        settings = Settings(openai_api_key="sk-test", summary_model="gpt-4o-mini")
+        client = FakeOpenAIClient("Synopsis: hola.\nFacts: none.")
+        summarizer = OpenAISummarizer(client=client, settings=settings)
+        text = await summarizer.summarize(
+            [Turn(role="user", item_id="1", text="hola, ¿cómo estás?")],
+            language="es",
+        )
+        assert text == "Synopsis: hola.\nFacts: none."
+
+        assert client.calls, "Responses.create should be invoked"
+        payload = client.calls[0]
+        assert payload["model"] == settings.summary_model
+        system_prompt = payload["input"][0]["content"][0]["text"]
+        assert "Spanish (es)" in system_prompt
+        transcript = payload["input"][1]["content"][0]["text"]
+        assert "User: hola, ¿cómo estás?" in transcript
+
+    asyncio.run(main())
+
+
+def test_null_summarizer_is_disabled():
+    async def main():
+        summarizer = NullSummarizer()
+        assert getattr(summarizer, "disabled", False)
+        result = await summarizer.summarize([])
+        assert result == ""
 
     asyncio.run(main())
 
@@ -277,7 +328,9 @@ def test_e2e_summary_added_and_prunes_history(monkeypatch):
         state.append(Turn(role="assistant", item_id="a1", text="hola"))
         state.append(Turn(role="user", item_id="u2", text="gracias"))
 
-        summarizer = OpenAISummarizer()
+        settings = Settings(openai_api_key="sk-test", summary_model="gpt-4o-mini")
+        fake_client = FakeOpenAIClient("Synopsis: resumen breve.\nFacts: none.")
+        summarizer = OpenAISummarizer(client=fake_client, settings=settings)
         policy = SummaryPolicy(threshold_tokens=1000, keep_last_turns=2, language_policy="auto")
 
         dispatcher = Dispatcher()
@@ -299,6 +352,7 @@ def test_e2e_summary_added_and_prunes_history(monkeypatch):
 
         # Summary inserted and history pruned
         assert state.history[0].role == "system"
+        assert state.history[0].text == "Synopsis: resumen breve.\nFacts: none."
         assert [t.item_id for t in state.history[1:]] == ["u2", "a2"]
 
         # Server received summary creation and deletes of old items
@@ -310,5 +364,9 @@ def test_e2e_summary_added_and_prunes_history(monkeypatch):
             if msg["type"] == "conversation.item.delete"
         }
         assert {"u1", "a1"} == delete_ids
+
+        assert fake_client.calls
+        prompt_text = fake_client.calls[0]["input"][0]["content"][0]["text"]
+        assert "Spanish (es)" in prompt_text
 
     asyncio.run(main())
