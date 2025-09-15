@@ -174,6 +174,7 @@ Use these steps as an incremental, verifiable path. You do not need to finish al
   - `voicebot devices list`
 - Testing: `pytest -q` (add `pytest-asyncio` for async tests).
 - Linting/typing: ruff + mypy (recommend pre-commit hooks).
+- Run `pre-commit run --files <file1> <file2>` on changed files before committing.
 
 ## Pitfalls & Tips
 

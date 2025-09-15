@@ -6,6 +6,32 @@ This repo is intended to serve as a more robust example of a long conversation a
 
 The original script that was converted can be found here: `original/realtime_agent_cli.py`
 
+## Configuration
+
+Set environment variables or create a `.env` file. For OpenAI:
+
+```bash
+PROVIDER=openai
+OPENAI_API_KEY=sk-...
+```
+
+For Azure OpenAI:
+
+```bash
+PROVIDER=azure
+AZURE_OPENAI_API_KEY=your-azure-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_API_VERSION=2024-07-01-preview
+AZURE_OPENAI_DEPLOYMENT=realtime
+```
+
+CLI flags can override these values, e.g.:
+
+```bash
+voicebot run --provider azure --endpoint https://your-resource.openai.azure.com \
+  --deployment realtime --api-version 2024-07-01-preview
+```
+
 ## Development
 
 Create a virtual environment with Python 3.11 or newer and install the development

@@ -10,6 +10,7 @@ import sys
 import time
 from typing import Any
 
+from ..config import Settings
 from ..errors import ErrorCategory
 from ..metrics import (
     audio_frames_dropped_total,
@@ -22,6 +23,31 @@ from .events import EventHandler
 
 class ConnectionLost(Exception):
     """Internal signal indicating the transport connection dropped."""
+
+
+def build_ws_url_headers(settings: Settings) -> tuple[str, dict[str, str]]:
+    """Construct WebSocket URL and headers for the configured provider."""
+
+    if settings.provider == "azure":
+        endpoint = (settings.azure_openai_endpoint or "").rstrip("/")
+        scheme = "wss" if endpoint.startswith("https") else "ws"
+        host = endpoint.split("://", 1)[-1]
+        url = (
+            f"{scheme}://{host}/openai/realtime?api-version={settings.azure_openai_api_version}"
+            f"&deployment={settings.azure_openai_deployment}"
+        )
+        headers = {"api-key": settings.azure_openai_api_key}
+    else:
+        base = settings.openai_base_url or "https://api.openai.com/v1"
+        base = base.rstrip("/")
+        scheme = "wss" if base.startswith("https") else "ws"
+        host = base.split("://", 1)[-1]
+        url = f"{scheme}://{host}/realtime?model={settings.realtime_model}"
+        headers = {
+            "Authorization": f"Bearer {settings.openai_api_key}",
+            "OpenAI-Beta": "realtime=v1",
+        }
+    return url, headers
 
 
 class RealtimeClient:
