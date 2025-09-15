@@ -31,12 +31,8 @@ def run(
     ),
     provider: str | None = typer.Option(None, help="API provider"),
     endpoint: str | None = typer.Option(None, help="Azure OpenAI endpoint"),
-    deployment: str | None = typer.Option(
-        None, help="Azure OpenAI deployment name"
-    ),
-    api_version: str | None = typer.Option(
-        None, help="Azure OpenAI API version"
-    ),
+    deployment: str | None = typer.Option(None, help="Azure OpenAI deployment name"),
+    api_version: str | None = typer.Option(None, help="Azure OpenAI API version"),
     verbose: bool = typer.Option(False, help="Print effective settings"),
 ) -> None:
     """Run the voicebot orchestrator."""

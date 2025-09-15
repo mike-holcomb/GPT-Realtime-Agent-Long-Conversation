@@ -75,6 +75,7 @@ def test_run_azure_overrides(monkeypatch):
     assert settings.azure_openai_deployment == "mydeploy"
     assert settings.azure_openai_api_version == "2024-06-01"
 
+
 def test_devices_list(monkeypatch):
     fake_sd = types.SimpleNamespace(
         query_devices=lambda: [
