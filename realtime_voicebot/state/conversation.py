@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -56,9 +58,17 @@ class ConversationState:
     waiting: dict[str, object] = field(default_factory=dict)
     summarising: bool = False
     summary_count: int = 0
+    redact: Callable[[str], str] | None = None
 
     def append(self, turn: Turn) -> None:
-        self.history.append(turn)
+        text = turn.text
+        if text and self.redact:
+            text = self.redact(text)
+        new_turn = Turn(role=turn.role, item_id=turn.item_id, text=text)
+        logging.getLogger(__name__).debug(
+            "append_turn", extra={"role": new_turn.role, "text": text}
+        )
+        self.history.append(new_turn)
 
     def should_summarize(self, threshold_tokens: int, keep_last_turns: int) -> bool:
         return (

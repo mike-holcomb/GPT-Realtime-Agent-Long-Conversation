@@ -5,8 +5,10 @@ import types
 
 import pytest
 
-pytest.importorskip("typer")
-from typer.testing import CliRunner
+try:
+    from typer.testing import CliRunner
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    pytest.skip("typer not installed", allow_module_level=True)
 
 from realtime_voicebot import cli
 

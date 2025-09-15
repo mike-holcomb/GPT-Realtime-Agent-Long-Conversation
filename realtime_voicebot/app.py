@@ -25,6 +25,12 @@ async def run(settings: Settings | None = None) -> None:
     """
     configure_logging()
     settings = settings or get_settings()
+    # Wire default PII redaction into conversation state based on settings.
+    # This ensures transcripts are scrubbed before logging or storage.
+    from .redaction import Redactor
+    from .state.conversation import ConversationState
+
+    state = ConversationState(redact=Redactor(enabled=settings.redact_pii).redact)
     logging.getLogger(__name__).info(
         "voicebot starting",
         extra={
@@ -34,7 +40,8 @@ async def run(settings: Settings | None = None) -> None:
             "summary_trigger": settings.summary_trigger_tokens,
         },
     )
-    # Placeholder until transport is wired
+    # Placeholder until transport is wired; keep state referenced
+    _ = state
     await asyncio.sleep(0)
 
 
