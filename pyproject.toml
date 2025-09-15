@@ -9,10 +9,11 @@ dependencies = [
   "pydantic-settings>=2.3.0",
   "sounddevice>=0.4.6",
   "websockets>=11.0",
+  "typer>=0.12",
 ]
 
 [project.scripts]
-voicebot = "realtime_voicebot.app:main"
+voicebot = "realtime_voicebot.cli:app"
 
 [project.optional-dependencies]
 dev = [

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import Field, PositiveInt
+from pydantic import PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     """
 
     # OpenAI / API configuration
-    openai_api_key: Annotated[str, Field(min_length=1)] = ""
+    # Note: allow empty by default so CLI/tests can run without a key.
+    # Connection layers should validate presence when contacting the API.
+    openai_api_key: str = ""
     openai_base_url: str | None = None
 
     # Models & voice

@@ -3,12 +3,18 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from .config import get_settings
+from .config import Settings, get_settings
 from .logging import configure_logging
 
 
-async def run() -> None:
+async def run(settings: Settings | None = None) -> None:
     """Application orchestrator stub.
+
+    Parameters
+    ----------
+    settings:
+        Optional :class:`Settings` instance to run with. If omitted, values are
+        loaded from the environment using :func:`get_settings`.
 
     This currently only validates configuration and sets up logging. In the
     next iterations it will:
@@ -18,7 +24,7 @@ async def run() -> None:
       - Apply summarization policy.
     """
     configure_logging()
-    settings = get_settings()
+    settings = settings or get_settings()
     logging.getLogger(__name__).info(
         "voicebot starting",
         extra={
