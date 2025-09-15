@@ -266,5 +266,6 @@ class RealtimeClient:
         self._canceled.pop(response_id, None)
 
     def is_canceled(self, response_id: str) -> bool:
-        self._prune_canceled()
+        # Don't prune here to ensure cancellations remain in effect
+        # until a response completion/error explicitly clears them.
         return response_id in self._canceled
