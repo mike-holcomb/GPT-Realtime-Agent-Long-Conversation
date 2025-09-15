@@ -109,3 +109,36 @@ def test_reconnect_resends_session_update(monkeypatch, caplog):
         assert any(rec.error_category == "network" for rec in caplog.records)
 
     asyncio.run(main())
+
+
+def test_canceled_ids_pruned_by_ttl():
+    import time
+
+    async def noop(event):
+        return None
+
+    from realtime_voicebot.transport.client import RealtimeClient
+
+    client = RealtimeClient("ws://fake", {}, noop, cancel_ttl=0.01)
+    client._canceled["expired"] = time.monotonic() - 1
+    client._canceled["active"] = time.monotonic()
+    client._prune_canceled()
+    assert "expired" not in client._canceled
+    assert "active" in client._canceled
+
+
+def test_is_canceled_does_not_prune():
+    import time
+
+    async def noop(event):
+        return None
+
+    from realtime_voicebot.transport.client import RealtimeClient
+
+    client = RealtimeClient("ws://fake", {}, noop, cancel_ttl=0.01)
+    client._canceled["old"] = time.monotonic() - 1
+    # Calling is_canceled should not drop the entry even though it is stale
+    assert client.is_canceled("old")
+    # Manual pruning removes it
+    client._prune_canceled()
+    assert "old" not in client._canceled

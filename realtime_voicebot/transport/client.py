@@ -7,6 +7,7 @@ import json
 import logging
 import random
 import sys
+import time
 from typing import Any
 
 from ..errors import ErrorCategory
@@ -37,6 +38,7 @@ class RealtimeClient:
         backoff_max: float = 8.0,
         ping_interval: float | None = 10.0,
         ping_timeout: float = 20.0,
+        cancel_ttl: float = 60.0,
     ):
         self.url = url
         self.headers = headers
@@ -46,13 +48,14 @@ class RealtimeClient:
         self.backoff_max = backoff_max
         self.ping_interval = ping_interval
         self.ping_timeout = ping_timeout
+        self._cancel_ttl = cancel_ttl
         self._stop = asyncio.Event()
         self._ws: Any | None = None
 
         # Outbound audio queue (bytes)
         self._audio_q: asyncio.Queue[bytes] = asyncio.Queue(maxsize=64)
         self.active_response_id: str | None = None
-        self._canceled: set[str] = set()
+        self._canceled: dict[str, float] = {}
 
     async def connect(self) -> None:
         """Connect and maintain the WebSocket with retries.
@@ -240,10 +243,17 @@ class RealtimeClient:
             raise RuntimeError("WebSocket is not connected")
         await self._ws.send(json.dumps(payload))
 
+    def _prune_canceled(self) -> None:
+        cutoff = time.monotonic() - self._cancel_ttl
+        for rid, ts in list(self._canceled.items()):
+            if ts < cutoff:
+                self._canceled.pop(rid, None)
+
     async def response_cancel(self, response_id: str) -> None:
         # Mark as canceled locally first to immediately drop further deltas
         # even before the server processes the cancel message.
-        self._canceled.add(response_id)
+        self._prune_canceled()
+        self._canceled[response_id] = time.monotonic()
         if self.active_response_id == response_id:
             self.active_response_id = None
         await self.send_json({"type": "response.cancel", "response_id": response_id})
@@ -252,5 +262,10 @@ class RealtimeClient:
         if self.active_response_id:
             await self.response_cancel(self.active_response_id)
 
+    def clear_canceled(self, response_id: str) -> None:
+        self._canceled.pop(response_id, None)
+
     def is_canceled(self, response_id: str) -> bool:
+        # Don't prune here to ensure cancellations remain in effect
+        # until a response completion/error explicitly clears them.
         return response_id in self._canceled
