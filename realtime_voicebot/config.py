@@ -17,7 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover - lightweight fallback for tests
         class PositiveInt(int):  # type: ignore[no-redef]
             """Runtime shim that mimics ``pydantic.PositiveInt``."""
 
-            def __new__(cls, value: int) -> "PositiveInt":
+            def __new__(cls, value: int) -> PositiveInt:
                 if value <= 0:
                     raise ValueError("PositiveInt must be positive")
                 return int.__new__(cls, value)

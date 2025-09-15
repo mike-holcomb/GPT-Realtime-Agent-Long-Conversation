@@ -4,7 +4,7 @@ import base64
 import logging
 
 from ..audio.output import AudioPlayer
-from ..state.conversation import ConversationState, SummaryPolicy, Turn, Role
+from ..state.conversation import ConversationState, Role, SummaryPolicy, Turn
 from ..summarization.base import Summarizer
 from ..transport.client import RealtimeClient
 
