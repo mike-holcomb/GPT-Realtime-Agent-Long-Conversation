@@ -29,6 +29,14 @@ def run(
     summary_threshold: int | None = typer.Option(
         None, help="Token threshold to trigger summarization"
     ),
+    provider: str | None = typer.Option(None, help="API provider"),
+    endpoint: str | None = typer.Option(None, help="Azure OpenAI endpoint"),
+    deployment: str | None = typer.Option(
+        None, help="Azure OpenAI deployment name"
+    ),
+    api_version: str | None = typer.Option(
+        None, help="Azure OpenAI API version"
+    ),
     verbose: bool = typer.Option(False, help="Print effective settings"),
 ) -> None:
     """Run the voicebot orchestrator."""
@@ -43,6 +51,14 @@ def run(
         overrides["output_device_id"] = output_device
     if summary_threshold is not None:
         overrides["summary_trigger_tokens"] = summary_threshold
+    if provider is not None:
+        overrides["provider"] = provider
+    if endpoint is not None:
+        overrides["azure_openai_endpoint"] = endpoint
+    if deployment is not None:
+        overrides["azure_openai_deployment"] = deployment
+    if api_version is not None:
+        overrides["azure_openai_api_version"] = api_version
     # Merge CLI overrides into the loaded settings instance to preserve types
     # and keep mypy satisfied about update semantics.
     settings = get_settings().model_copy(update=overrides)

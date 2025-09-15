@@ -14,11 +14,20 @@ class Settings(BaseSettings):
     overridden via CLI flags by the application entrypoint.
     """
 
+    # Provider selection
+    provider: Literal["openai", "azure"] = "openai"
+
     # OpenAI / API configuration
     # Note: allow empty by default so CLI/tests can run without a key.
     # Connection layers should validate presence when contacting the API.
     openai_api_key: str = ""
     openai_base_url: str | None = None
+
+    # Azure OpenAI configuration
+    azure_openai_api_key: str = ""
+    azure_openai_endpoint: str | None = None
+    azure_openai_api_version: str = "2024-07-01-preview"
+    azure_openai_deployment: str = "realtime"
 
     # Models & voice
     realtime_model: str = "gpt-4o-realtime-preview"

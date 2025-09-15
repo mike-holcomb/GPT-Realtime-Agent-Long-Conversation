@@ -46,6 +46,35 @@ def test_run_overrides(monkeypatch):
     assert "foo" in result.stdout
 
 
+def test_run_azure_overrides(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_run(settings):
+        captured["settings"] = settings
+
+    monkeypatch.setattr("realtime_voicebot.app.run", fake_run)
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        [
+            "run",
+            "--provider",
+            "azure",
+            "--endpoint",
+            "https://example.openai.azure.com",
+            "--deployment",
+            "mydeploy",
+            "--api-version",
+            "2024-06-01",
+        ],
+    )
+    assert result.exit_code == 0
+    settings = captured["settings"]
+    assert settings.provider == "azure"
+    assert settings.azure_openai_endpoint == "https://example.openai.azure.com"
+    assert settings.azure_openai_deployment == "mydeploy"
+    assert settings.azure_openai_api_version == "2024-06-01"
+
 def test_devices_list(monkeypatch):
     fake_sd = types.SimpleNamespace(
         query_devices=lambda: [
