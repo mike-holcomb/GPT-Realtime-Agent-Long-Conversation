@@ -79,7 +79,22 @@ class ConversationState:
     summary_count: int = 0
 
     latest_tokens: int = 0     # Window size after last reply
+    pending_summary_tokens: int = 0
     summarising: bool = False  # Guard to prevent concurrent summaries
+
+    def record_usage(self, total_tokens: int | None) -> None:
+        tokens = int(total_tokens or 0)
+        self.latest_tokens = tokens
+        if tokens > self.pending_summary_tokens:
+            self.pending_summary_tokens = tokens
+
+    def should_summarize(self, threshold_tokens: int, keep_last_turns: int) -> bool:
+        effective_tokens = max(self.latest_tokens, self.pending_summary_tokens)
+        return (
+            effective_tokens >= threshold_tokens
+            and len(self.history) > keep_last_turns
+            and not self.summarising
+        )
 
 
 def print_history(state: ConversationState) -> None:
@@ -169,7 +184,8 @@ async def run_summary_llm(text: str) -> str:
 async def summarise_and_prune(ws, state: ConversationState) -> None:
     """Summarize old turns, insert summary (SYSTEM), delete old items server-side."""
     state.summarising = True
-    print(f"⚠️  Token window ≈{state.latest_tokens} ≥ {SUMMARY_TRIGGER}. Summarising…")
+    window_tokens = max(state.latest_tokens, state.pending_summary_tokens)
+    print(f"⚠️  Token window ≈{window_tokens} ≥ {SUMMARY_TRIGGER}. Summarising…")
 
     old_turns = state.history[:-KEEP_LAST_TURNS]
     recent_turns = state.history[-KEEP_LAST_TURNS:]
@@ -209,6 +225,8 @@ async def summarise_and_prune(ws, state: ConversationState) -> None:
         await ws.send(json.dumps({"type": "conversation.item.delete", "item_id": turn.item_id}))
 
     print(f"✅ Summary inserted ({summary_id})")
+    state.latest_tokens = 0
+    state.pending_summary_tokens = 0
     state.summarising = False
 
 
@@ -306,8 +324,10 @@ async def realtime_session(model: str = REALTIME_MODEL, voice: str = VOICE_NAME,
                         if item.get("role") == "assistant":
                             txt = item["content"][0].get("transcript")
                             state.history.append(Turn("assistant", item["id"], txt))
-                    state.latest_tokens = event["response"]["usage"]["total_tokens"]
-                    print(f"—— response.done  (window ≈{state.latest_tokens} tokens) ——")
+                    usage = event["response"].get("usage", {})
+                    state.record_usage(usage.get("total_tokens"))
+                    window_tokens = max(state.latest_tokens, state.pending_summary_tokens)
+                    print(f"—— response.done  (window ≈{window_tokens} tokens) ——")
                     print_history(state)
 
                     # Backfill any missing user transcripts
@@ -326,11 +346,7 @@ async def realtime_session(model: str = REALTIME_MODEL, voice: str = VOICE_NAME,
                         assistant_audio.clear()
 
                     # Summarize if context too large
-                    if (
-                        state.latest_tokens >= SUMMARY_TRIGGER
-                        and len(state.history) > KEEP_LAST_TURNS
-                        and not state.summarising
-                    ):
+                    if state.should_summarize(SUMMARY_TRIGGER, KEEP_LAST_TURNS):
                         asyncio.create_task(summarise_and_prune(ws, state))
 
                 # Resolve any pending fetch futures when server responds

@@ -55,10 +55,19 @@ class SummaryPolicy:
 class ConversationState:
     history: list[Turn] = field(default_factory=list)
     latest_tokens: int = 0
+    pending_summary_tokens: int = 0
     waiting: dict[str, object] = field(default_factory=dict)
     summarising: bool = False
     summary_count: int = 0
     redact: Callable[[str], str] | None = None
+
+    def record_usage(self, total_tokens: int | None) -> None:
+        """Record the usage from a response and retain the peak token window."""
+
+        tokens = int(total_tokens or 0)
+        self.latest_tokens = tokens
+        if tokens > self.pending_summary_tokens:
+            self.pending_summary_tokens = tokens
 
     def append(self, turn: Turn) -> None:
         text = turn.text
@@ -71,8 +80,9 @@ class ConversationState:
         self.history.append(new_turn)
 
     def should_summarize(self, threshold_tokens: int, keep_last_turns: int) -> bool:
+        effective_tokens = max(self.latest_tokens, self.pending_summary_tokens)
         return (
-            self.latest_tokens >= threshold_tokens
+            effective_tokens >= threshold_tokens
             and len(self.history) > keep_last_turns
             and not self.summarising
         )
@@ -90,16 +100,17 @@ class ConversationState:
         of the history. ``summary_count`` is incremented each time this method is
         called.
         """
+
         # Defer summarization/pruning if any of the turns that would be pruned
         # are still missing transcripts. This avoids deleting server-side items
         # that have not yet been backfilled by conversation.item.retrieved.
+        def _has_pending(turns: list[Turn]) -> bool:
+            return any(
+                t.role != "system" and (t.text is None or not str(t.text).strip()) for t in turns
+            )
+
         old_turns = self.history[:-keep_last_turns]
-        pending_ids = [
-            t.item_id
-            for t in old_turns
-            if t.role != "system" and (t.text is None or not str(t.text).strip())
-        ]
-        if pending_ids:
+        if _has_pending(old_turns):
             # Simply skip summarization for now; a later event (e.g. retrieved
             # transcripts or another response.done) can re-trigger it.
             return
@@ -110,12 +121,18 @@ class ConversationState:
         finally:
             self.summarising = False
 
+        # Re-check after summarization in case new placeholder turns arrived.
+        pruned_turns = self.history[:-keep_last_turns]
+        if _has_pending(pruned_turns):
+            return
+
         recent = self.history[-keep_last_turns:]
         self.summary_count += 1
         summary_id = f"summary-{self.summary_count}"
         summary_turn = Turn(role="system", item_id=summary_id, text=summary)
         self.history = [summary_turn] + recent
         self.latest_tokens = 0
+        self.pending_summary_tokens = 0
 
         if client:
             await client.send_json(
@@ -130,7 +147,7 @@ class ConversationState:
                     },
                 }
             )
-            for turn in old_turns:
+            for turn in pruned_turns:
                 await client.send_json(
                     {"type": "conversation.item.delete", "item_id": turn.item_id}
                 )
