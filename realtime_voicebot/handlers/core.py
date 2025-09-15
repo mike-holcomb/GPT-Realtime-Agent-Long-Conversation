@@ -87,6 +87,8 @@ async def handle_response_done(
     state.record_usage(usage.get("total_tokens"))
 
     if policy.should_summarize(state):
+        if getattr(summarizer, "disabled", False):
+            return
         language = policy.determine_language(state.history)
         await state.summarize_and_prune(
             summarizer,
@@ -142,6 +144,8 @@ async def handle_conversation_item_retrieved(
         updated = True
 
     if policy.should_summarize(state):
+        if getattr(summarizer, "disabled", False):
+            return
         language = policy.determine_language(state.history)
         await state.summarize_and_prune(
             summarizer,

@@ -32,6 +32,23 @@ voicebot run --provider azure --endpoint https://your-resource.openai.azure.com 
   --deployment realtime --api-version 2024-07-01-preview
 ```
 
+### Summarization settings
+
+Summaries are produced with the OpenAI Responses API using `SUMMARY_MODEL`
+(defaults to `gpt-4o-mini`). The following environment variables tune the
+behaviour:
+
+| Variable | Purpose |
+| --- | --- |
+| `SUMMARY_MODEL` | Model or Azure deployment used for summarisation. Set to `none`/`null`/`off` to disable (uses the `NullSummarizer`). |
+| `SUMMARY_TRIGGER_TOKENS` | Token window that triggers summarisation/pruning. |
+| `KEEP_LAST_TURNS` | Number of most recent turns kept verbatim after summarising. |
+| `LANGUAGE_POLICY` | `auto`, `force`, or `en` to influence the prompt language. |
+
+When `PROVIDER=openai`, set `OPENAI_API_KEY` (and optionally `OPENAI_BASE_URL`).
+For Azure, configure the `AZURE_OPENAI_*` variables and provide a deployment
+name via `SUMMARY_MODEL`.
+
 ## Development
 
 Create a virtual environment with Python 3.11 or newer and install the development
@@ -103,7 +120,7 @@ See the Architecture section below for module layout. The original tutorial scri
 ## Remaining Gaps (to address)
 
 1. **App orchestration**: `app.run` is a stub. It should wire `RealtimeClient`, `MicStreamer → append_audio`, `AudioPlayer`, handler registration, and graceful lifecycle.
-2. **Summarizer backend**: `OpenAISummarizer` is a stub; replace with a real OpenAI‑backed implementation that honors the language policy. Keep tests hermetic via mocking.
+2. **Summarizer resiliency**: add retries/backoff around the Responses API call and expose metrics/counters for failures.
 3. **Transcript backfill**: Implement `conversation.item.retrieved` handler to backfill missing transcripts; ensure summarization defers until backfill completes.
 4. **Latency timers wiring**: Wire EoS→first‑delta and first‑delta→playback timers at appropriate events (e.g., `response.created`/first `response.audio.delta`), and add tests.
 5. **Error handling**: Add explicit handlers for `response.error` and related failure paths with error taxonomy.
