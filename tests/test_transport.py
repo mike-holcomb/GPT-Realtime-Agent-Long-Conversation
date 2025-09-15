@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
@@ -50,5 +51,55 @@ def test_transport_event_dispatch_and_barge_in_response_cancel(monkeypatch):
 
         assert received == [e["type"] for e in events]
         assert {msg["type"] for msg in server.received} == {"response.cancel"}
+
+    asyncio.run(main())
+
+
+def test_reconnect_resends_session_update(monkeypatch, caplog):
+    async def main():
+        events = [
+            [{"type": "session.created"}],
+            [{"type": "session.created"}, {"type": "response.audio.delta", "audio": ""}],
+        ]
+        server = FakeRealtimeServer(events)
+
+        import types
+
+        fake_ws = types.SimpleNamespace(connect=server.connect, WebSocketClientProtocol=object)
+        monkeypatch.setitem(sys.modules, "websockets", fake_ws)
+
+        from realtime_voicebot.metrics import reconnections_total
+        from realtime_voicebot.transport.client import RealtimeClient
+
+        reconnections_total.value = 0
+
+        received: list[str] = []
+
+        async def on_event(event):
+            received.append(event["type"])
+
+        client = RealtimeClient(
+            "ws://fake",
+            {},
+            on_event,
+            session_config={"voice": "test"},
+            backoff_base=0.01,
+            backoff_max=0.02,
+            ping_interval=None,
+        )
+
+        caplog.set_level(logging.WARNING)
+        task = asyncio.create_task(client.connect())
+        await asyncio.sleep(0.2)
+        await client.close()
+        await task
+
+        assert received == ["session.created", "session.created", "response.audio.delta"]
+        assert [msg["type"] for batch in server.received_batches for msg in batch] == [
+            "session.update",
+            "session.update",
+        ]
+        assert reconnections_total.value == 1
+        assert any(rec.error_category == "network" for rec in caplog.records)
 
     asyncio.run(main())
