@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 try:
     from pydantic import PositiveInt
@@ -9,23 +9,34 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - lightweight fallback for tests
     import json
 
-    PositiveInt = int
+    if TYPE_CHECKING:  # pragma: no cover - satisfy type checkers
+        from pydantic import PositiveInt  # type: ignore[import]
+        from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore[import]
+    else:
 
-    class BaseSettings:  # pragma: no cover - trivial shim
-        def __init__(self, **kwargs):
-            for key, value in kwargs.items():
-                setattr(self, key, value)
+        class PositiveInt(int):  # type: ignore[no-redef]
+            """Runtime shim that mimics ``pydantic.PositiveInt``."""
 
-        def model_dump(self) -> dict:
-            annotations = getattr(self.__class__, "__annotations__", {})
-            return {name: getattr(self, name) for name in annotations}
+            def __new__(cls, value: int) -> "PositiveInt":
+                if value <= 0:
+                    raise ValueError("PositiveInt must be positive")
+                return int.__new__(cls, value)
 
-        def model_dump_json(self, indent: int | None = None) -> str:
-            return json.dumps(self.model_dump(), indent=indent)
+        class BaseSettings:  # pragma: no cover - trivial shim
+            def __init__(self, **kwargs):
+                for key, value in kwargs.items():
+                    setattr(self, key, value)
 
-    class SettingsConfigDict(dict):  # pragma: no cover - trivial shim
-        def __init__(self, **kwargs) -> None:
-            super().__init__(**kwargs)
+            def model_dump(self) -> dict:
+                annotations = getattr(self.__class__, "__annotations__", {})
+                return {name: getattr(self, name) for name in annotations}
+
+            def model_dump_json(self, indent: int | None = None) -> str:
+                return json.dumps(self.model_dump(), indent=indent)
+
+        class SettingsConfigDict(dict):  # pragma: no cover - trivial shim
+            def __init__(self, **kwargs) -> None:
+                super().__init__(**kwargs)
 
 
 class Settings(BaseSettings):

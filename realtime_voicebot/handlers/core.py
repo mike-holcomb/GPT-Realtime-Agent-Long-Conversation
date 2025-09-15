@@ -4,7 +4,7 @@ import base64
 import logging
 
 from ..audio.output import AudioPlayer
-from ..state.conversation import ConversationState, SummaryPolicy, Turn
+from ..state.conversation import ConversationState, SummaryPolicy, Turn, Role
 from ..summarization.base import Summarizer
 from ..transport.client import RealtimeClient
 
@@ -136,7 +136,8 @@ async def handle_conversation_item_retrieved(
             break
 
     if not updated:
-        role = item.get("role") or "user"
+        role_value = item.get("role")
+        role: Role = role_value if role_value in {"user", "assistant", "system"} else "user"
         state.append(Turn(role=role, item_id=item_id, text=transcript))
         updated = True
 
