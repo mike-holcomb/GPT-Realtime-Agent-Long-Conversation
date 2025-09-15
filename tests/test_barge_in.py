@@ -34,8 +34,13 @@ from realtime_voicebot.handlers.core import (  # noqa: E402
     handle_conversation_item_created,
     handle_response_audio_delta,
     handle_response_created,
+    handle_response_done,
 )
 from realtime_voicebot.handlers.dispatcher import Dispatcher  # noqa: E402
+from realtime_voicebot.state.conversation import (  # noqa: E402
+    ConversationState,
+    SummaryPolicy,
+)
 from realtime_voicebot.transport.client import RealtimeClient  # noqa: E402
 from tests.fakes.fake_realtime_server import FakeRealtimeServer  # noqa: E402
 
@@ -63,17 +68,10 @@ def test_barge_in_sends_cancel_and_stops_player(caplog: pytest.LogCaptureFixture
         client.send_json = fake_send_json  # type: ignore[method-assign]
         player = DummyPlayer()
 
-        await handle_response_audio_delta(
-            {
-                "type": "response.audio.delta",
-                "response_id": "r1",
-                "audio": base64.b64encode(b"hi").decode(),
-            },
-            client,
-            player,
+        await handle_response_created(
+            {"type": "response.created", "response": {"id": "r1"}}, client
         )
         assert client.active_response_id == "r1"
-        assert player.feed_chunks == [b"hi"]
 
         with caplog.at_level(logging.INFO):
             await handle_conversation_item_created(
@@ -85,6 +83,7 @@ def test_barge_in_sends_cancel_and_stops_player(caplog: pytest.LogCaptureFixture
         assert sent == [{"type": "response.cancel", "response_id": "r1"}]
         assert player.flush_called
         assert any(record.message == "barge_in" for record in caplog.records)
+        assert client.active_response_id is None
 
         await handle_response_audio_delta(
             {
@@ -95,7 +94,51 @@ def test_barge_in_sends_cancel_and_stops_player(caplog: pytest.LogCaptureFixture
             client,
             player,
         )
-        assert player.feed_chunks == [b"hi"]
+        assert player.feed_chunks == []
+
+    asyncio.run(run())
+
+
+class DummySummarizer:
+    async def summarize(self, turns, language):  # pragma: no cover - simple stub
+        return ""
+
+
+def test_response_done_clears_active_response_id() -> None:
+    async def run() -> None:
+        client = RealtimeClient("ws://example", {}, lambda e: None)
+        sent: list[dict] = []
+
+        async def fake_send_json(payload: dict) -> None:
+            sent.append(payload)
+
+        client.send_json = fake_send_json  # type: ignore[method-assign]
+        player = DummyPlayer()
+        state = ConversationState()
+        summarizer = DummySummarizer()
+        policy = SummaryPolicy(threshold_tokens=999, keep_last_turns=2)
+
+        await handle_response_created(
+            {"type": "response.created", "response": {"id": "r1"}}, client
+        )
+        assert client.active_response_id == "r1"
+
+        await handle_response_done(
+            {"type": "response.done", "response": {"id": "r1"}},
+            client,
+            state,
+            summarizer,
+            policy,
+        )
+        assert client.active_response_id is None
+
+        await handle_conversation_item_created(
+            {"type": "conversation.item.created", "item": {"role": "user", "id": "u2"}},
+            client,
+            player,
+        )
+        assert sent == []
+        assert not player.flush_called
 
     asyncio.run(run())
 

@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 async def handle_response_created(event: dict, client: RealtimeClient) -> None:
-    response_id = event.get("response", {}).get("id")
+    """Record the currently active response when it's created."""
+
+    response = event.get("response", {})
+    response_id = response.get("id") or event.get("response_id")
     if response_id:
         client.active_response_id = response_id
 
@@ -52,6 +55,9 @@ async def handle_response_done(
     """Handle ``response.done`` by recording assistant text and summarizing."""
 
     resp = event.get("response", {})
+    response_id = resp.get("id") or event.get("response_id")
+    if client.active_response_id == response_id:
+        client.active_response_id = None
     for item in resp.get("output", []):
         if item.get("role") == "assistant":
             txt = item.get("content", [{}])[0].get("transcript")
