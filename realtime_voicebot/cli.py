@@ -6,11 +6,12 @@ import json
 import sys
 import types
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
 import typer
 
-from .app import run as app_run
-from .config import Settings
+from . import app as app_module
+from .config import get_settings
 from .transport.client import RealtimeClient
 
 app = typer.Typer(help="Realtime voicebot utility")
@@ -31,7 +32,7 @@ def run(
     verbose: bool = typer.Option(False, help="Print effective settings"),
 ) -> None:
     """Run the voicebot orchestrator."""
-    overrides: dict[str, object] = {}
+    overrides: dict[str, Any] = {}
     if model is not None:
         overrides["realtime_model"] = model
     if voice is not None:
@@ -42,10 +43,13 @@ def run(
         overrides["output_device_id"] = output_device
     if summary_threshold is not None:
         overrides["summary_trigger_tokens"] = summary_threshold
-    settings = Settings(**overrides)
+    # Merge CLI overrides into the loaded settings instance to preserve types
+    # and keep mypy satisfied about update semantics.
+    settings = get_settings().model_copy(update=overrides)
     if verbose:
         typer.echo(settings.model_dump_json(indent=2))
-    asyncio.run(app_run(settings=settings))
+    # Resolve run at call-time so monkeypatching realtime_voicebot.app.run works
+    asyncio.run(app_module.run(settings=settings))
 
 
 @devices_app.command("list")
@@ -104,8 +108,10 @@ def test(fake_server: bool = typer.Option(False, help="Run against a fake server
             await ws.close()
 
     async def main() -> None:
-        fake_ws = types.SimpleNamespace(connect=_fake_connect)
-        sys.modules["websockets"] = fake_ws
+        # Insert a proper ModuleType shim so type checkers recognize it as a module
+        fake_ws_mod = types.ModuleType("websockets")
+        cast(Any, fake_ws_mod).connect = _fake_connect
+        sys.modules["websockets"] = fake_ws_mod
         received: list[dict] = []
 
         async def on_event(ev: dict) -> None:
