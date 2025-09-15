@@ -36,7 +36,7 @@ from realtime_voicebot.handlers.core import (  # noqa: E402
     handle_response_created,
     handle_response_done,
 )
-from realtime_voicebot.handlers.dispatcher import Dispatcher  # noqa: E402
+from realtime_voicebot.transport.events import Dispatcher  # noqa: E402
 from realtime_voicebot.state.conversation import (  # noqa: E402
     ConversationState,
     SummaryPolicy,
@@ -164,12 +164,12 @@ def test_barge_in_before_audio_sends_cancel(monkeypatch) -> None:
         player = DummyPlayer()
         client = RealtimeClient("ws://fake", {}, dispatcher.dispatch, ping_interval=None)
 
-        dispatcher.register("response.created", lambda e: handle_response_created(e, client))
-        dispatcher.register(
+        dispatcher.on("response.created", lambda e: handle_response_created(e, client))
+        dispatcher.on(
             "conversation.item.created",
             lambda e: handle_conversation_item_created(e, client, player),
         )
-        dispatcher.register(
+        dispatcher.on(
             "response.audio.delta",
             lambda e: handle_response_audio_delta(e, client, player),
         )
@@ -201,8 +201,8 @@ def test_barge_in_cancel_before_first_delta(monkeypatch) -> None:
         player = DummyPlayer()
         client = RealtimeClient("ws://fake", {}, dispatcher.dispatch, ping_interval=None)
 
-        dispatcher.register("response.created", lambda e: handle_response_created(e, client))
-        dispatcher.register(
+        dispatcher.on("response.created", lambda e: handle_response_created(e, client))
+        dispatcher.on(
             "conversation.item.created",
             lambda e: handle_conversation_item_created(e, client, player),
         )
