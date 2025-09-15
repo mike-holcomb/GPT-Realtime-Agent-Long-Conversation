@@ -129,7 +129,7 @@ def test_summary_defers_until_transcript_backfilled():
                 return "Summary stub"
 
         summarizer = DummySummarizer()
-        policy = SummaryPolicy(threshold_tokens=10, keep_last_turns=2)
+        policy = SummaryPolicy(threshold_tokens=10, keep_last_turns=3)
 
         class DummyClient:
             def __init__(self) -> None:
@@ -167,8 +167,35 @@ def test_summary_defers_until_transcript_backfilled():
 
         assert summarizer.calls == 0
         assert state.summary_count == 0
+        assert state.pending_summary_tokens == 50
         assert client.sent == []
         assert [t.item_id for t in state.history] == ["u1", "a1", "u2", "a2"]
+
+        await handle_response_done(
+            {
+                "type": "response.done",
+                "response": {
+                    "id": "r2",
+                    "output": [
+                        {
+                            "id": "a3",
+                            "role": "assistant",
+                            "content": [{"transcript": "second"}],
+                        }
+                    ],
+                    "usage": {"total_tokens": 5},
+                },
+            },
+            client,
+            state,
+            summarizer,
+            policy,
+        )
+
+        assert summarizer.calls == 0
+        assert state.pending_summary_tokens == 50
+        assert state.latest_tokens == 5
+        assert [t.item_id for t in state.history] == ["u1", "a1", "u2", "a2", "a3"]
 
         await handle_conversation_item_retrieved(
             {
@@ -187,8 +214,9 @@ def test_summary_defers_until_transcript_backfilled():
 
         assert summarizer.calls == 1
         assert state.summary_count == 1
+        assert state.pending_summary_tokens == 0
         assert state.history[0].role == "system"
-        assert [t.item_id for t in state.history[1:]] == ["u2", "a2"]
+        assert [t.item_id for t in state.history[1:]] == ["u2", "a2", "a3"]
         assert [msg["type"] for msg in client.sent] == [
             "conversation.item.create",
             "conversation.item.delete",

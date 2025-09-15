@@ -55,10 +55,19 @@ class SummaryPolicy:
 class ConversationState:
     history: list[Turn] = field(default_factory=list)
     latest_tokens: int = 0
+    pending_summary_tokens: int = 0
     waiting: dict[str, object] = field(default_factory=dict)
     summarising: bool = False
     summary_count: int = 0
     redact: Callable[[str], str] | None = None
+
+    def record_usage(self, total_tokens: int | None) -> None:
+        """Record the usage from a response and retain the peak token window."""
+
+        tokens = int(total_tokens or 0)
+        self.latest_tokens = tokens
+        if tokens > self.pending_summary_tokens:
+            self.pending_summary_tokens = tokens
 
     def append(self, turn: Turn) -> None:
         text = turn.text
@@ -71,8 +80,9 @@ class ConversationState:
         self.history.append(new_turn)
 
     def should_summarize(self, threshold_tokens: int, keep_last_turns: int) -> bool:
+        effective_tokens = max(self.latest_tokens, self.pending_summary_tokens)
         return (
-            self.latest_tokens >= threshold_tokens
+            effective_tokens >= threshold_tokens
             and len(self.history) > keep_last_turns
             and not self.summarising
         )
@@ -122,6 +132,7 @@ class ConversationState:
         summary_turn = Turn(role="system", item_id=summary_id, text=summary)
         self.history = [summary_turn] + recent
         self.latest_tokens = 0
+        self.pending_summary_tokens = 0
 
         if client:
             await client.send_json(

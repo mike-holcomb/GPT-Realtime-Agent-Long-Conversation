@@ -84,7 +84,7 @@ async def handle_response_done(
             state.append(Turn(role="assistant", item_id=item.get("id", ""), text=txt))
 
     usage = resp.get("usage", {})
-    state.latest_tokens = usage.get("total_tokens", 0)
+    state.record_usage(usage.get("total_tokens"))
 
     if policy.should_summarize(state):
         language = policy.determine_language(state.history)

@@ -62,3 +62,16 @@ def test_summary_policy_language_detection_and_trigger():
 
     policy_en = SummaryPolicy(threshold_tokens=100, keep_last_turns=2, language_policy="en")
     assert policy_en.determine_language(state.history) == "en"
+
+
+def test_record_usage_retains_peak_tokens_until_summary():
+    state = ConversationState()
+    for i in range(6):
+        state.append(Turn(role="user", item_id=str(i), text=f"t{i}"))
+
+    state.record_usage(120)
+    state.record_usage(5)
+
+    assert state.latest_tokens == 5
+    assert state.pending_summary_tokens == 120
+    assert state.should_summarize(threshold_tokens=100, keep_last_turns=5)
