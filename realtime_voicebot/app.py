@@ -91,7 +91,7 @@ async def run(settings: Settings | None = None) -> None:
     dispatcher.on("response.error", lambda ev: handle_response_error(ev, client))
 
     # Placeholder for future transcript backfill support.
-    dispatcher.on("conversation.item.retrieved", lambda _ev: None)
+    dispatcher.on("conversation.item.retrieved", lambda _ev: asyncio.sleep(0))
 
     # Mic input queue ---------------------------------------------------------
     audio_q: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=32)
