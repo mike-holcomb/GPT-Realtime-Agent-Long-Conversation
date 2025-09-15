@@ -37,14 +37,15 @@ from realtime_voicebot.metrics import (  # noqa: E402
 
 class DummyStream:
     def __init__(self, *args, **kwargs):
-        self.started = False
+        self.start_calls = 0
         self.stopped = False
+        self.write_calls: list[bytes] = []
 
     def start(self) -> None:
-        self.started = True
+        self.start_calls += 1
 
     def write(self, data: bytes) -> None:  # pragma: no cover - stub
-        pass
+        self.write_calls.append(data)
 
     def stop(self) -> None:
         self.stopped = True
@@ -70,6 +71,7 @@ def test_flush_stops_player(monkeypatch):
 
 
 def test_feed_queue_full_increments_metric(monkeypatch):
+
     import sounddevice as sd
 
     async def run() -> None:
@@ -85,5 +87,6 @@ def test_feed_queue_full_increments_metric(monkeypatch):
         assert audio_frames_dropped_total.value == 1
         assert audio_output_queue_depth.value == 1
         await player.stop()
+
 
     asyncio.run(run())

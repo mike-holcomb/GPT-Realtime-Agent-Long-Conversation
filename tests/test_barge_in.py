@@ -33,8 +33,11 @@ sys.modules["websockets"] = types.ModuleType("websockets")
 from realtime_voicebot.handlers.core import (  # noqa: E402
     handle_conversation_item_created,
     handle_response_audio_delta,
+    handle_response_created,
 )
+from realtime_voicebot.handlers.dispatcher import Dispatcher  # noqa: E402
 from realtime_voicebot.transport.client import RealtimeClient  # noqa: E402
+from tests.fakes.fake_realtime_server import FakeRealtimeServer  # noqa: E402
 
 
 class DummyPlayer:
@@ -93,5 +96,47 @@ def test_barge_in_sends_cancel_and_stops_player(caplog: pytest.LogCaptureFixture
             player,
         )
         assert player.feed_chunks == [b"hi"]
+
+    asyncio.run(run())
+
+
+def test_barge_in_before_audio_sends_cancel(monkeypatch) -> None:
+    async def run() -> None:
+        events = [
+            {"type": "response.created", "response": {"id": "r1"}},
+            {"type": "conversation.item.created", "item": {"role": "user", "id": "u1"}},
+            {
+                "type": "response.audio.delta",
+                "response_id": "r1",
+                "audio": base64.b64encode(b"after").decode(),
+            },
+        ]
+        server = FakeRealtimeServer(events)
+        import types
+
+        fake_ws = types.SimpleNamespace(connect=server.connect, WebSocketClientProtocol=object)
+        monkeypatch.setitem(sys.modules, "websockets", fake_ws)
+
+        dispatcher = Dispatcher()
+        player = DummyPlayer()
+        client = RealtimeClient("ws://fake", {}, dispatcher.dispatch, ping_interval=None)
+
+        dispatcher.register("response.created", lambda e: handle_response_created(e, client))
+        dispatcher.register(
+            "conversation.item.created",
+            lambda e: handle_conversation_item_created(e, client, player),
+        )
+        dispatcher.register(
+            "response.audio.delta",
+            lambda e: handle_response_audio_delta(e, client, player),
+        )
+
+        task = asyncio.create_task(client.connect())
+        await asyncio.sleep(0.1)
+        await client.close()
+        await task
+
+        assert server.received == [{"type": "response.cancel", "response_id": "r1"}]
+        assert player.feed_chunks == []
 
     asyncio.run(run())

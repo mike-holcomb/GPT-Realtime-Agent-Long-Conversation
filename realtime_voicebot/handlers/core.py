@@ -11,6 +11,12 @@ from ..transport.client import RealtimeClient
 logger = logging.getLogger(__name__)
 
 
+async def handle_response_created(event: dict, client: RealtimeClient) -> None:
+    response_id = event.get("response", {}).get("id")
+    if response_id:
+        client.active_response_id = response_id
+
+
 async def handle_response_audio_delta(
     event: dict, client: RealtimeClient, player: AudioPlayer
 ) -> None:
