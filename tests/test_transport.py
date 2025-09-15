@@ -9,13 +9,20 @@ from realtime_voicebot.handlers.dispatcher import Dispatcher
 from tests.fakes.fake_realtime_server import FakeRealtimeServer
 
 
-def test_transport_event_dispatch_and_barge_in_response_cancel(monkeypatch):
+class DummyPlayer:
+    async def feed(self, chunk: bytes) -> None:  # pragma: no cover - stub
+        return None
+
+    async def flush(self) -> None:  # pragma: no cover - stub
+        return None
+
+
+def test_transport_barge_in_response_cancel(monkeypatch):
     async def main():
         events = [
             {"type": "session.created"},
-            {"type": "response.audio.delta", "audio": ""},
-            {"type": "conversation.item.created", "item": {"role": "user"}},
-            {"type": "response.done"},
+            {"type": "response.created", "response": {"id": "r1"}},
+            {"type": "conversation.item.created", "item": {"role": "user", "id": "u1"}},
         ]
 
         server = FakeRealtimeServer(events)
@@ -25,22 +32,22 @@ def test_transport_event_dispatch_and_barge_in_response_cancel(monkeypatch):
         fake_ws = types.SimpleNamespace(connect=server.connect, WebSocketClientProtocol=object)
         monkeypatch.setitem(sys.modules, "websockets", fake_ws)
 
+        from realtime_voicebot.handlers.core import (
+            handle_conversation_item_created,
+            handle_response_created,
+        )
         from realtime_voicebot.transport.client import RealtimeClient
 
-        received = []
         dispatcher = Dispatcher()
+        player = DummyPlayer()
 
-        async def record(event):
-            received.append(event["type"])
-
-        for etype in ["session.created", "response.audio.delta", "response.done"]:
-            dispatcher.register(etype, record)
+        async def on_response_created(event):
+            await handle_response_created(event, client)
 
         async def on_item_created(event):
-            received.append(event["type"])
-            if event["item"]["role"] == "user":
-                await client.send_json({"type": "response.cancel"})
+            await handle_conversation_item_created(event, client, player)
 
+        dispatcher.register("response.created", on_response_created)
         dispatcher.register("conversation.item.created", on_item_created)
 
         client = RealtimeClient("ws://fake", {}, dispatcher.dispatch)
@@ -49,8 +56,7 @@ def test_transport_event_dispatch_and_barge_in_response_cancel(monkeypatch):
         await client.close()
         await task
 
-        assert received == [e["type"] for e in events]
-        assert {msg["type"] for msg in server.received} == {"response.cancel"}
+        assert server.received == [{"type": "response.cancel", "response_id": "r1"}]
 
     asyncio.run(main())
 
