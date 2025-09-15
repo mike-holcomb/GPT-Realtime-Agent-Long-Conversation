@@ -58,7 +58,8 @@ async def handle_response_done(
     response_id = resp.get("id") or event.get("response_id")
     if client.active_response_id == response_id:
         client.active_response_id = None
-    client.clear_canceled(response_id)
+    if response_id:
+        client.clear_canceled(response_id)
     for item in resp.get("output", []):
         if item.get("role") == "assistant":
             txt = item.get("content", [{}])[0].get("transcript")
@@ -81,4 +82,5 @@ async def handle_response_error(event: dict, client: RealtimeClient) -> None:
     response_id = event.get("response_id") or event.get("response", {}).get("id")
     if client.active_response_id == response_id:
         client.active_response_id = None
-    client.clear_canceled(response_id)
+    if response_id:
+        client.clear_canceled(response_id)
