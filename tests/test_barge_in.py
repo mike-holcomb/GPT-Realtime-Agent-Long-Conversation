@@ -113,6 +113,7 @@ def test_barge_in_before_audio_sends_cancel(monkeypatch) -> None:
         ]
         server = FakeRealtimeServer(events)
         import types
+
         fake_ws = types.SimpleNamespace(connect=server.connect, WebSocketClientProtocol=object)
         monkeypatch.setitem(sys.modules, "websockets", fake_ws)
 
