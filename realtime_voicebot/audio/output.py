@@ -10,6 +10,7 @@ from typing import Any
 
 from ..metrics import (
     audio_frames_dropped_total,
+    audio_output_queue_depth,
     first_delta_to_playback_ms,
 )
 
@@ -56,6 +57,7 @@ class AudioPlayer:
                 "latency_ms": first_delta_to_playback_ms.last_ms,
                 "tokens_total": None,
                 "dropped_frames": audio_frames_dropped_total.value,
+                "queue_depth": audio_output_queue_depth.value,
             },
         )
 
@@ -87,6 +89,7 @@ class AudioPlayer:
                 "latency_ms": first_delta_to_playback_ms.last_ms,
                 "tokens_total": None,
                 "dropped_frames": audio_frames_dropped_total.value,
+                "queue_depth": audio_output_queue_depth.value,
             },
         )
 
@@ -120,6 +123,7 @@ class AudioPlayer:
                 "latency_ms": None,
                 "tokens_total": None,
                 "dropped_frames": audio_frames_dropped_total.value,
+                "queue_depth": audio_output_queue_depth.value,
             },
         )
 
@@ -141,3 +145,28 @@ class AudioPlayer:
             self._queue.put_nowait(chunk)
         except asyncio.QueueFull:
             audio_frames_dropped_total.inc()
+            self.log.warning(
+                "audio_output_queue_full",
+                extra={
+                    "event_type": "audio_output_queue_full",
+                    "turn_id": None,
+                    "response_id": None,
+                    "latency_ms": None,
+                    "tokens_total": None,
+                    "dropped_frames": audio_frames_dropped_total.value,
+                    "queue_depth": self._queue.qsize(),
+                },
+            )
+        audio_output_queue_depth.set(self._queue.qsize())
+        self.log.debug(
+            "audio_output_queue_depth",
+            extra={
+                "event_type": "audio_output_queue_depth",
+                "turn_id": None,
+                "response_id": None,
+                "latency_ms": None,
+                "tokens_total": None,
+                "dropped_frames": audio_frames_dropped_total.value,
+                "queue_depth": audio_output_queue_depth.value,
+            },
+        )

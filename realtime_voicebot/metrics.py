@@ -12,6 +12,14 @@ class Counter:
         self.value += n
 
 
+class Gauge:
+    def __init__(self) -> None:
+        self.value = 0
+
+    def set(self, v: int) -> None:
+        self.value = v
+
+
 class Timer:
     def __init__(self) -> None:
         self.last_ms: float | None = None
@@ -41,3 +49,5 @@ reconnections_total = Counter()
 audio_frames_dropped_total = Counter()
 eos_to_first_delta_ms = Timer()
 first_delta_to_playback_ms = Timer()
+audio_input_queue_depth = Gauge()
+audio_output_queue_depth = Gauge()

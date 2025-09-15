@@ -12,6 +12,7 @@ from typing import Any
 from ..errors import ErrorCategory
 from ..metrics import (
     audio_frames_dropped_total,
+    audio_input_queue_depth,
     eos_to_first_delta_ms,
     reconnections_total,
 )
@@ -208,6 +209,31 @@ class RealtimeClient:
             self._audio_q.put_nowait(chunk)
         except asyncio.QueueFull:
             audio_frames_dropped_total.inc()
+            logging.getLogger(__name__).warning(
+                "audio_input_queue_full",
+                extra={
+                    "event_type": "audio_input_queue_full",
+                    "turn_id": None,
+                    "response_id": None,
+                    "latency_ms": None,
+                    "tokens_total": None,
+                    "dropped_frames": audio_frames_dropped_total.value,
+                    "queue_depth": self._audio_q.qsize(),
+                },
+            )
+        audio_input_queue_depth.set(self._audio_q.qsize())
+        logging.getLogger(__name__).debug(
+            "audio_input_queue_depth",
+            extra={
+                "event_type": "audio_input_queue_depth",
+                "turn_id": None,
+                "response_id": None,
+                "latency_ms": None,
+                "tokens_total": None,
+                "dropped_frames": audio_frames_dropped_total.value,
+                "queue_depth": audio_input_queue_depth.value,
+            },
+        )
 
     async def send_json(self, payload: dict) -> None:
         if not self._ws:

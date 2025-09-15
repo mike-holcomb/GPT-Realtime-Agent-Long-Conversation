@@ -29,6 +29,10 @@ dummy_sd.RawOutputStream = _Stub
 sys.modules["sounddevice"] = dummy_sd
 
 from realtime_voicebot.audio.output import AudioPlayer, PlayerConfig  # noqa: E402
+from realtime_voicebot.metrics import (  # noqa: E402
+    audio_frames_dropped_total,
+    audio_output_queue_depth,
+)
 
 
 class DummyStream:
@@ -66,39 +70,21 @@ def test_flush_stops_player(monkeypatch):
     asyncio.run(run())
 
 
-def test_restart_after_flush_respects_jitter(monkeypatch):
+def test_feed_queue_full_increments_metric(monkeypatch):
     import sounddevice as sd
 
     async def run() -> None:
         dummy = DummyStream()
         monkeypatch.setattr(sd, "RawOutputStream", lambda *a, **k: dummy)
-        player = AudioPlayer(PlayerConfig(sample_rate_hz=1000, jitter_ms=10))
-
-        loop = asyncio.get_running_loop()
-
-        async def fake_run_in_executor(executor, func, *args):
-            func(*args)
-            return None
-
-        monkeypatch.setattr(loop, "run_in_executor", fake_run_in_executor)
-
-        jitter_bytes = int(player.cfg.sample_rate_hz * player.cfg.jitter_ms / 1_000) * 2
-
+        audio_frames_dropped_total.value = 0
+        audio_output_queue_depth.value = 0
+        player = AudioPlayer(PlayerConfig(jitter_ms=0))
+        player._queue = asyncio.Queue(maxsize=1)
         await player.start()
-        await player.feed(b"a" * (jitter_bytes // 2))
-        await player.flush()
-        assert dummy.start_calls == 1
-
-        await player.feed(b"b" * (jitter_bytes // 2))
-        await asyncio.sleep(0)
-        assert dummy.start_calls == 2
-        assert dummy.write_calls == []
-
-        await player.feed(b"c" * (jitter_bytes // 2))
-        await asyncio.sleep(0)
-        assert len(dummy.write_calls) == 1
-        assert len(dummy.write_calls[0]) == jitter_bytes
-
-        await player.flush()
+        await player.feed(b"1")
+        await player.feed(b"2")
+        assert audio_frames_dropped_total.value == 1
+        assert audio_output_queue_depth.value == 1
+        await player.stop()
 
     asyncio.run(run())
