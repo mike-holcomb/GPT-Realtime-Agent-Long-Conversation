@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from realtime_voicebot.handlers.dispatcher import Dispatcher
+from realtime_voicebot.transport.events import Dispatcher
 from tests.fakes.fake_realtime_server import FakeRealtimeServer
 
 
@@ -47,8 +47,8 @@ def test_transport_barge_in_response_cancel(monkeypatch):
         async def on_item_created(event):
             await handle_conversation_item_created(event, client, player)
 
-        dispatcher.register("response.created", on_response_created)
-        dispatcher.register("conversation.item.created", on_item_created)
+        dispatcher.on("response.created", on_response_created)
+        dispatcher.on("conversation.item.created", on_item_created)
 
         client = RealtimeClient("ws://fake", {}, dispatcher.dispatch)
         task = asyncio.create_task(client.connect())

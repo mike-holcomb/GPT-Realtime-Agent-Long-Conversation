@@ -5,7 +5,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from realtime_voicebot.handlers.core import handle_response_done
-from realtime_voicebot.handlers.dispatcher import Dispatcher
 from realtime_voicebot.state.conversation import (
     ConversationState,
     SummaryPolicy,
@@ -13,6 +12,7 @@ from realtime_voicebot.state.conversation import (
 )
 from realtime_voicebot.summarization.openai_impl import OpenAISummarizer
 from realtime_voicebot.transport.client import RealtimeClient
+from realtime_voicebot.transport.events import Dispatcher
 from tests.fakes.fake_realtime_server import FakeRealtimeServer
 
 
@@ -82,7 +82,7 @@ def test_e2e_summary_added_and_prunes_history(monkeypatch):
         dispatcher = Dispatcher()
 
         client = RealtimeClient("ws://fake", {}, dispatcher.dispatch)
-        dispatcher.register(
+        dispatcher.on(
             "response.done",
             lambda ev: handle_response_done(ev, client, state, summarizer, policy),
         )
