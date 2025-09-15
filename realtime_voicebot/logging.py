@@ -18,6 +18,7 @@ class JsonFormatter(logging.Formatter):
             "latency_ms": getattr(record, "latency_ms", None),
             "tokens_total": getattr(record, "tokens_total", None),
             "dropped_frames": getattr(record, "dropped_frames", None),
+            "error_category": getattr(record, "error_category", None),
         }
         return json.dumps(payload, default=str)
 
