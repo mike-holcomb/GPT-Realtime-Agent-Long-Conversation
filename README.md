@@ -104,6 +104,26 @@ realtime_voicebot/
     test_summarization.py
 ```
 
+### Tool contract
+
+`handlers/tools.py` contains a tiny tool registry. Tools expose a name,
+description, JSON schema for arguments, and a Python callable. The registry's
+specification is advertised to the Realtime session via ``session.update`` under
+the ``tools`` field. When the server emits a ``response.output_item.create``
+event with ``item.type == "tool_call"``, the client executes the tool and sends
+back a ``tool_result`` item.
+
+Two sample tools are provided:
+
+* ``clock`` – returns the current UTC time.
+* ``http_get`` – performs a simple HTTP GET and returns the response text.
+
+### PII redaction
+
+Basic email and US phone number redaction is handled by ``redaction.Redactor``.
+When enabled (``Settings.redact_pii``), transcripts are filtered before being
+logged or stored in conversation state.
+
 ### 1) Configuration & typing
 
 * **Pydantic `BaseSettings`** for all tunables (models, sample rate, VAD mode, thresholds, language policy, device IDs). Environment variables > `.env` > CLI flags.

@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     keep_last_turns: PositiveInt = 2
     language_policy: Literal["auto", "en", "force"] = "auto"
 
+    # Privacy
+    redact_pii: bool = True
+
     # pydantic-settings v2 configuration
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False
