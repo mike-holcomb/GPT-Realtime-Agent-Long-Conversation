@@ -12,8 +12,8 @@ from typing import Any
 from ..errors import ErrorCategory
 from ..metrics import (
     audio_frames_dropped_total,
-    eos_to_first_delta_ms,
     audio_input_queue_depth,
+    eos_to_first_delta_ms,
     reconnections_total,
 )
 from .events import EventHandler

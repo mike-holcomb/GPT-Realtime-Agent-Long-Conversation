@@ -71,7 +71,6 @@ def test_flush_stops_player(monkeypatch):
 
 
 def test_feed_queue_full_increments_metric(monkeypatch):
-
     import sounddevice as sd
 
     async def run() -> None:
@@ -87,6 +86,5 @@ def test_feed_queue_full_increments_metric(monkeypatch):
         assert audio_frames_dropped_total.value == 1
         assert audio_output_queue_depth.value == 1
         await player.stop()
-
 
     asyncio.run(run())
