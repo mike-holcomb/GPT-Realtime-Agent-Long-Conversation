@@ -29,6 +29,10 @@ dummy_sd.RawOutputStream = _Stub
 sys.modules["sounddevice"] = dummy_sd
 
 from realtime_voicebot.audio.output import AudioPlayer, PlayerConfig  # noqa: E402
+from realtime_voicebot.metrics import (  # noqa: E402
+    audio_frames_dropped_total,
+    audio_output_queue_depth,
+)
 
 
 class DummyStream:
@@ -61,5 +65,25 @@ def test_flush_stops_player(monkeypatch):
         await player.flush()
         assert player.stream is None
         assert player._queue.empty()
+
+    asyncio.run(run())
+
+
+def test_feed_queue_full_increments_metric(monkeypatch):
+    import sounddevice as sd
+
+    async def run() -> None:
+        dummy = DummyStream()
+        monkeypatch.setattr(sd, "RawOutputStream", lambda *a, **k: dummy)
+        audio_frames_dropped_total.value = 0
+        audio_output_queue_depth.value = 0
+        player = AudioPlayer(PlayerConfig(jitter_ms=0))
+        player._queue = asyncio.Queue(maxsize=1)
+        await player.start()
+        await player.feed(b"1")
+        await player.feed(b"2")
+        assert audio_frames_dropped_total.value == 1
+        assert audio_output_queue_depth.value == 1
+        await player.stop()
 
     asyncio.run(run())
